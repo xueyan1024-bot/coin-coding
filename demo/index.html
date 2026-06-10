@@ -187,6 +187,14 @@ btn.onclick = () => {
   else setWorking(false, 'idle');
 };
 
+/* 窗口缩放时，把跑到可视区外的金币拉回来 */
+window.addEventListener('resize', () => {
+  document.querySelectorAll('.coin').forEach(el => {
+    const max = innerWidth - el.offsetWidth;
+    if (parseFloat(el.style.left) > max) el.style.left = Math.max(0, max) + 'px';
+  });
+});
+
 async function poll() {
   if (testMode) return;
   try {
