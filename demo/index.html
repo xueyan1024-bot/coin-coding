@@ -4,48 +4,150 @@
 <meta charset="UTF-8">
 <title>Coin Coding 演示版</title>
 <style>
-  body { margin:0; height:100vh; overflow:hidden; background:#1a1d24; font-family:-apple-system,sans-serif; }
-  #hud { position:fixed; top:16px; right:20px; color:#ffd75e; font-size:20px; font-weight:700;
-         background:rgba(0,0,0,.45); padding:8px 16px; border-radius:20px; z-index:10; }
-  #status { position:fixed; top:16px; left:20px; color:#9aa3b2; font-size:14px;
-            background:rgba(0,0,0,.45); padding:8px 14px; border-radius:20px; }
-  #status.working { color:#7ee08a; }
-  #status.paused { color:#ffce4d; }
-  .coin { position:absolute; border-radius:50%; cursor:pointer; user-select:none;
+  :root { --gold:#ffd75e; --gold-dark:#e8a200; }
+  * { box-sizing:border-box; }
+  body { margin:0; height:100vh; overflow:hidden; font-family:-apple-system,"PingFang SC",sans-serif;
+         background:radial-gradient(1200px 800px at 70% -10%, #232a3d 0%, #15181f 55%, #0e1014 100%); }
+
+  /* ---- 顶部 HUD ---- */
+  #topbar { position:fixed; top:0; left:0; right:0; display:flex; justify-content:space-between;
+            align-items:center; padding:14px 20px; z-index:10; pointer-events:none; }
+  .pill { pointer-events:auto; display:flex; align-items:center; gap:8px; padding:9px 16px;
+          border-radius:22px; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.1);
+          backdrop-filter:blur(8px); color:#9aa3b2; font-size:14px; }
+  #dot { width:8px; height:8px; border-radius:50%; background:#5a6372; transition:.3s; }
+  #status.working #dot { background:#4ade80; box-shadow:0 0 8px #4ade80; }
+  #status.paused #dot { background:#fbbf24; box-shadow:0 0 8px #fbbf24; }
+  #status.working { color:#a7f3c0; } #status.paused { color:#fde68a; }
+  #hud { font-size:19px; font-weight:800; color:var(--gold); letter-spacing:.5px; }
+  #hud.bump { animation:bump .25s ease; }
+  @keyframes bump { 40% { transform:scale(1.18); } }
+
+  /* ---- 金币 ---- */
+  .coin { position:absolute; border-radius:50%; cursor:pointer; user-select:none; z-index:5;
           display:flex; align-items:center; justify-content:center; font-weight:800; color:#7a4d00;
-          background:radial-gradient(circle at 35% 30%, #ffe89a, #ffc83d 60%, #d99a1b);
-          box-shadow:0 2px 8px rgba(0,0,0,.4), inset 0 0 0 3px rgba(255,255,255,.35);
-          transition:transform .08s; }
-  .coin:active { transform:scale(.85); }
-  .coin.big { background:radial-gradient(circle at 35% 30%, #fff7d1, #ffd75e 55%, #e8a200);
-              box-shadow:0 0 18px rgba(255,215,94,.8), inset 0 0 0 3px rgba(255,255,255,.5); }
-  .pop { position:absolute; color:#ffd75e; font-weight:800; pointer-events:none;
-         animation:rise .6s ease-out forwards; }
-  @keyframes rise { to { transform:translateY(-40px); opacity:0; } }
-  #testBtn { position:fixed; bottom:20px; right:20px; padding:10px 18px; border:none; border-radius:10px;
-             background:#3b82f6; color:#fff; font-size:14px; cursor:pointer; }
+          background:radial-gradient(circle at 32% 28%, #fff3c4 0%, #ffd75e 38%, #f0a818 72%, #c47e08 100%);
+          box-shadow:0 4px 12px rgba(0,0,0,.45), inset 0 -3px 6px rgba(140,85,0,.45), inset 0 3px 6px rgba(255,255,255,.55);
+          animation:wobble 1.6s ease-in-out infinite; }
+  .coin::after { content:""; position:absolute; top:8%; left:14%; width:34%; height:22%;
+                 border-radius:50%; background:rgba(255,255,255,.65); filter:blur(2px);
+                 transform:rotate(-25deg); }
+  @keyframes wobble { 0%,100% { transform:rotate(-6deg);} 50% { transform:rotate(6deg);} }
+  .coin:active { transform:scale(.82); animation:none; }
+  .coin.big { background:radial-gradient(circle at 32% 28%, #fffbe0 0%, #ffe27a 35%, #ffb300 70%, #d18a00 100%);
+              box-shadow:0 0 22px rgba(255,210,80,.85), 0 4px 14px rgba(0,0,0,.5),
+                         inset 0 -4px 8px rgba(140,85,0,.4), inset 0 4px 8px rgba(255,255,255,.6); }
+  .coin .ring { position:absolute; inset:12%; border-radius:50%; border:2px dashed rgba(140,85,0,.35); }
+
+  .pop { position:absolute; font-weight:800; pointer-events:none; z-index:8;
+         background:linear-gradient(#fff3c4,var(--gold)); -webkit-background-clip:text;
+         -webkit-text-fill-color:transparent; filter:drop-shadow(0 1px 2px rgba(0,0,0,.6));
+         animation:rise .7s ease-out forwards; }
+  @keyframes rise { to { transform:translateY(-52px) scale(1.25); opacity:0; } }
+  .spark { position:absolute; width:5px; height:5px; border-radius:50%; background:var(--gold);
+           pointer-events:none; z-index:7; animation:spark .5s ease-out forwards; }
+  @keyframes spark { to { transform:translate(var(--dx),var(--dy)) scale(0); opacity:0; } }
+
+  /* ---- 底部按钮 ---- */
+  #bottombar { position:fixed; bottom:20px; right:20px; display:flex; gap:10px; z-index:10; }
+  .btn { padding:10px 18px; border:none; border-radius:12px; font-size:14px; font-weight:600;
+         cursor:pointer; transition:.15s; }
+  .btn:hover { transform:translateY(-1px); filter:brightness(1.1); }
+  #testBtn { background:#3b82f6; color:#fff; }
+  #rankBtn { background:rgba(255,215,94,.15); color:var(--gold); border:1px solid rgba(255,215,94,.4); }
+
+  /* ---- 排行榜 ---- */
+  #rankOverlay { position:fixed; inset:0; background:rgba(8,10,14,.72); backdrop-filter:blur(6px);
+                 display:none; align-items:center; justify-content:center; z-index:20; }
+  #rankOverlay.show { display:flex; }
+  #rankCard { width:400px; max-height:78vh; overflow:auto; border-radius:20px; padding:24px;
+              background:linear-gradient(160deg,#1d2230,#14171f); border:1px solid rgba(255,255,255,.09);
+              box-shadow:0 24px 60px rgba(0,0,0,.6); animation:slideUp .25s ease; }
+  @keyframes slideUp { from { transform:translateY(24px); opacity:0; } }
+  #rankCard h2 { margin:0 0 4px; color:#fff; font-size:20px; }
+  #rankCard .sub { color:#6b7484; font-size:12px; margin-bottom:18px; }
+  .row { display:flex; align-items:center; gap:12px; padding:10px 12px; border-radius:12px; }
+  .row.top1 { background:linear-gradient(90deg,rgba(255,215,94,.16),transparent); }
+  .row.top2 { background:linear-gradient(90deg,rgba(200,210,225,.10),transparent); }
+  .row.top3 { background:linear-gradient(90deg,rgba(205,135,80,.12),transparent); }
+  .row.me { background:rgba(59,130,246,.16); border:1px solid rgba(59,130,246,.4); margin-top:14px; }
+  .rk { width:26px; text-align:center; font-weight:800; color:#6b7484; font-size:15px; }
+  .top1 .rk { color:var(--gold); } .top2 .rk { color:#cdd5e0; } .top3 .rk { color:#d99a66; }
+  .avatar { width:34px; height:34px; border-radius:50%; display:flex; align-items:center;
+            justify-content:center; font-weight:800; font-size:14px; color:#fff; flex:none; }
+  .uname { flex:1; color:#dde3ec; font-size:14px; font-weight:600; overflow:hidden;
+           text-overflow:ellipsis; white-space:nowrap; }
+  .score { color:var(--gold); font-weight:800; font-size:14px; }
+  .close { width:100%; margin-top:18px; padding:11px; border:none; border-radius:12px;
+           background:rgba(255,255,255,.08); color:#9aa3b2; font-size:14px; cursor:pointer; }
+  .close:hover { background:rgba(255,255,255,.13); color:#fff; }
 </style>
 </head>
 <body>
-<div id="status">等待 Claude 开工…</div>
-<div id="hud">🪙 0</div>
-<button id="testBtn">测试模式：开始掉币</button>
+<div id="topbar">
+  <div class="pill" id="status"><span id="dot"></span><span id="stext">等待 Claude 开工…</span></div>
+  <div class="pill" id="hud">🪙 0</div>
+</div>
+<div id="bottombar">
+  <button class="btn" id="rankBtn">🏆 排行榜</button>
+  <button class="btn" id="testBtn">测试模式：开始掉币</button>
+</div>
+
+<div id="rankOverlay">
+  <div id="rankCard">
+    <h2>🏆 全球排行榜</h2>
+    <div class="sub">示意界面 · 正式版接入 GitHub 登录后显示真实头像与用户名</div>
+    <div id="rankList"></div>
+    <button class="close" id="rankClose">关闭</button>
+  </div>
+</div>
+
 <script>
 const FALL_SECONDS = 4, SPAWN_MS = 2000, BIG_CHANCE = 0.05;
 let coins = parseInt(localStorage.getItem('coins') || '0');
 let working = false, testMode = false, spawnTimer = null;
 const hud = document.getElementById('hud'), statusEl = document.getElementById('status');
-const btn = document.getElementById('testBtn');
+const stext = document.getElementById('stext'), btn = document.getElementById('testBtn');
 hud.textContent = '🪙 ' + coins;
+
+/* 点击音效：用浏览器自带的发声器合成，无需音频文件 */
+let actx = null;
+function ding(big) {
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    const t = actx.currentTime;
+    [big ? 880 : 988, big ? 1320 : 1480].forEach((freq, i) => {
+      const o = actx.createOscillator(), g = actx.createGain();
+      o.type = 'sine'; o.frequency.value = freq;
+      g.gain.setValueAtTime(0.12, t + i * 0.05);
+      g.gain.exponentialRampToValueAtTime(0.001, t + i * 0.05 + 0.25);
+      o.connect(g).connect(actx.destination);
+      o.start(t + i * 0.05); o.stop(t + i * 0.05 + 0.3);
+    });
+  } catch (e) {}
+}
+
+function sparks(x, y) {
+  for (let i = 0; i < 8; i++) {
+    const s = document.createElement('div');
+    s.className = 'spark';
+    const a = Math.PI * 2 * i / 8, d = 26 + Math.random() * 18;
+    s.style.setProperty('--dx', Math.cos(a) * d + 'px');
+    s.style.setProperty('--dy', Math.sin(a) * d + 'px');
+    s.style.left = x + 'px'; s.style.top = y + 'px';
+    document.body.appendChild(s);
+    setTimeout(() => s.remove(), 500);
+  }
+}
 
 function spawn() {
   const big = Math.random() < BIG_CHANCE;
-  const size = big ? 64 : 44, value = big ? 10 : 1;
+  const size = big ? 68 : 46, value = big ? 10 : 1;
   const el = document.createElement('div');
   el.className = 'coin' + (big ? ' big' : '');
   el.style.width = el.style.height = size + 'px';
-  el.style.fontSize = size * 0.38 + 'px';
-  el.textContent = value;
+  el.style.fontSize = size * 0.36 + 'px';
+  el.innerHTML = '<span class="ring"></span>' + value;
   el.style.left = Math.random() * (innerWidth - size) + 'px';
   el.style.top = -size + 'px';
   document.body.appendChild(el);
@@ -53,7 +155,7 @@ function spawn() {
   function fall(now) {
     const t = (now - start) / (FALL_SECONDS * 1000);
     if (t >= 1) { el.remove(); return; }
-    el.style.top = (-64 + t * (innerHeight + 128)) + 'px';
+    el.style.top = (-70 + t * (innerHeight + 140)) + 'px';
     if (el.isConnected) requestAnimationFrame(fall);
   }
   requestAnimationFrame(fall);
@@ -61,17 +163,21 @@ function spawn() {
     coins += value;
     localStorage.setItem('coins', coins);
     hud.textContent = '🪙 ' + coins;
+    hud.classList.remove('bump'); void hud.offsetWidth; hud.classList.add('bump');
+    ding(big);
+    sparks(e.clientX, e.clientY);
     const pop = document.createElement('div');
     pop.className = 'pop'; pop.textContent = '+' + value;
-    pop.style.left = e.clientX + 'px'; pop.style.top = (e.clientY - 20) + 'px';
+    pop.style.fontSize = big ? '30px' : '20px';
+    pop.style.left = e.clientX - 10 + 'px'; pop.style.top = (e.clientY - 28) + 'px';
     document.body.appendChild(pop);
-    setTimeout(() => pop.remove(), 600);
+    setTimeout(() => pop.remove(), 700);
     el.remove();
   };
 }
 
 function setWorking(on, label, cls) {
-  statusEl.textContent = label; statusEl.className = cls || '';
+  stext.textContent = label; statusEl.className = 'pill ' + (cls || '');
   if (on === working) return;
   working = on;
   if (on) { spawn(); spawnTimer = setInterval(spawn, SPAWN_MS); }
@@ -93,9 +199,44 @@ async function poll() {
     if (s === 'working') setWorking(true, 'Claude 工作中', 'working');
     else if (s === 'paused') setWorking(false, 'Claude 在等你批准', 'paused');
     else setWorking(false, 'Claude 空闲中');
-  } catch (e) { /* 没连服务器时仅测试模式可用 */ }
+  } catch (e) {}
 }
 setInterval(poll, 500);
+
+/* ---- 排行榜（示意数据） ---- */
+const mock = [
+  ['torvalds-fan', 284350], ['vibe_coder_42', 261200], ['shipfast.dev', 248900],
+  ['0xKaiju', 197540], ['rustacean_m', 165320], ['asyncawaiter', 142800],
+  ['gpu_poor', 118650], ['midnight-merge', 97420], ['ship-it-sam', 76310], ['hookmaster', 58200],
+];
+const colors = ['#e0593e','#3b82f6','#9333ea','#0d9488','#d97706','#db2777','#65a30d','#6366f1','#b45309','#0891b2'];
+const overlay = document.getElementById('rankOverlay');
+const list = document.getElementById('rankList');
+
+function renderRank() {
+  let html = '';
+  mock.forEach(([name, score], i) => {
+    const cls = i === 0 ? 'top1' : i === 1 ? 'top2' : i === 2 ? 'top3' : '';
+    const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : (i + 1);
+    html += `<div class="row ${cls}">
+      <div class="rk">${medal}</div>
+      <div class="avatar" style="background:${colors[i]}">${name[0].toUpperCase()}</div>
+      <div class="uname">${name}</div>
+      <div class="score">🪙 ${score.toLocaleString()}</div>
+    </div>`;
+  });
+  html += `<div class="row me">
+    <div class="rk">…</div>
+    <div class="avatar" style="background:#3b82f6">你</div>
+    <div class="uname">你（GitHub 登录后显示用户名）</div>
+    <div class="score">🪙 ${coins.toLocaleString()}</div>
+  </div>`;
+  list.innerHTML = html;
+}
+
+document.getElementById('rankBtn').onclick = () => { renderRank(); overlay.classList.add('show'); };
+document.getElementById('rankClose').onclick = () => overlay.classList.remove('show');
+overlay.onclick = e => { if (e.target === overlay) overlay.classList.remove('show'); };
 </script>
 </body>
 </html>
