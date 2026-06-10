@@ -20,6 +20,10 @@
   #status.paused .v { color:var(--amber); }
   #hud { color:var(--bright); }
   #hud b { color:var(--amber); font-weight:600; }
+  #streak { color:var(--amber); margin-right:18px; }
+  #streak.hot { color:var(--green); }
+  #session { color:var(--dim); margin-left:14px; }
+  .pop.ms { color:var(--green); font-weight:600; }
 
   .coin { position:absolute; z-index:5; cursor:pointer; user-select:none;
           display:flex; align-items:center; justify-content:center;
@@ -62,8 +66,8 @@
 </head>
 <body>
 <div id="topbar">
-  <span id="status"><span class="p">claude:</span> <span class="v">idle</span><span class="cur"></span></span>
-  <span id="hud">coins = <b>0</b></span>
+  <span id="status"><span class="p">claude:</span> <span class="v">idle</span><span class="cur"></span><span id="session"></span></span>
+  <span><span id="streak"></span><span id="hud">coins = <b>0</b></span></span>
 </div>
 <div id="bottombar">
   <button class="lk" id="rankBtn">leaderboard</button>
@@ -79,12 +83,20 @@
 </div>
 
 <script>
-const FALL_SECONDS = 4, SPAWN_MS = 2000, BIG_CHANCE = 0.05;
+const FALL_SECONDS = 6, SPAWN_MS = 2000, BIG_CHANCE = 0.05;
 let coins = parseInt(localStorage.getItem('coins') || '0');
 let working = false, testMode = false, spawnTimer = null;
+let streak = 0, sessionCoins = 0;
 const hudVal = document.querySelector('#hud b'), statusEl = document.getElementById('status');
 const statusVal = document.querySelector('#status .v'), btn = document.getElementById('testBtn');
+const streakEl = document.getElementById('streak');
 hudVal.textContent = coins;
+
+function setStreak(n) {
+  streak = n;
+  streakEl.textContent = n >= 2 ? 'streak x' + n : '';
+  streakEl.className = n >= 10 ? 'hot' : '';
+}
 
 let actx = null;
 function tickSound() {
@@ -92,7 +104,8 @@ function tickSound() {
     actx = actx || new (window.AudioContext || window.webkitAudioContext)();
     const t = actx.currentTime;
     const o = actx.createOscillator(), g = actx.createGain();
-    o.type = 'square'; o.frequency.value = 880;
+    o.type = 'square';
+    o.frequency.value = 880 * Math.pow(1.06, Math.min(streak, 14));  /* 连击越高音调越高 */
     g.gain.setValueAtTime(0.03, t);
     g.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
     o.connect(g).connect(actx.destination);
@@ -115,18 +128,23 @@ function spawn() {
   const start = performance.now();
   function fall(now) {
     const t = (now - start) / (FALL_SECONDS * 1000);
-    if (t >= 1) { el.remove(); return; }
+    if (t >= 1) { el.remove(); setStreak(0); return; }   /* 漏接：连击清零 */
     el.style.top = (-50 + t * (innerHeight + 100)) + 'px';
     if (el.isConnected) requestAnimationFrame(fall);
   }
   requestAnimationFrame(fall);
   el.onmousedown = e => {
+    const before = coins;
     coins += value;
+    sessionCoins += value;
     localStorage.setItem('coins', coins);
     hudVal.textContent = coins;
+    setStreak(streak + 1);
     tickSound();
+    const milestone = Math.floor(coins / 100) > Math.floor(before / 100);
     const pop = document.createElement('div');
-    pop.className = 'pop'; pop.textContent = '// +' + value;
+    pop.className = 'pop' + (milestone ? ' ms' : '');
+    pop.textContent = milestone ? '// ' + Math.floor(coins / 100) * 100 + '!' : '// +' + value;
     pop.style.left = e.clientX + 8 + 'px'; pop.style.top = (e.clientY - 22) + 'px';
     document.body.appendChild(pop);
     setTimeout(() => pop.remove(), 600);
@@ -134,12 +152,20 @@ function spawn() {
   };
 }
 
+const sessionEl = document.getElementById('session');
 function setWorking(on, label, cls) {
   statusVal.textContent = label; statusEl.className = cls || '';
   if (on === working) return;
   working = on;
-  if (on) { spawn(); spawnTimer = setInterval(spawn, SPAWN_MS); }
-  else { clearInterval(spawnTimer); }
+  if (on) {
+    sessionCoins = 0;
+    sessionEl.textContent = '';
+    spawn(); spawnTimer = setInterval(spawn, SPAWN_MS);
+  } else {
+    clearInterval(spawnTimer);
+    setStreak(0);
+    if (sessionCoins > 0) sessionEl.textContent = '// session +' + sessionCoins;
+  }
 }
 
 btn.onclick = () => {
