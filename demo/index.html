@@ -99,19 +99,26 @@ function setStreak(n) {
 }
 
 let actx = null;
-function tickSound() {
+function beep(freq, vol, dur, type) {
   try {
     actx = actx || new (window.AudioContext || window.webkitAudioContext)();
     const t = actx.currentTime;
     const o = actx.createOscillator(), g = actx.createGain();
-    o.type = 'square';
-    o.frequency.value = 880 * Math.pow(1.06, Math.min(streak, 14));  /* 连击越高音调越高 */
-    g.gain.setValueAtTime(0.03, t);
-    g.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
+    o.type = type || 'square'; o.frequency.value = freq;
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
     o.connect(g).connect(actx.destination);
-    o.start(t); o.stop(t + 0.1);
+    o.start(t); o.stop(t + dur + 0.02);
   } catch (e) {}
 }
+/* 连击沿五声音阶一级级上行，每级都能清楚听出来 */
+const PENTA = [0, 2, 4, 7, 9];
+function tickSound() {
+  const i = Math.min(streak, 20);
+  const semis = Math.floor(i / 5) * 12 + PENTA[i % 5];
+  beep(523 * Math.pow(2, semis / 12), 0.04, 0.1);
+}
+function missSound() { beep(150, 0.05, 0.18, 'sine'); }   /* 漏接：低沉一声"咚" */
 
 function spawn() {
   const big = Math.random() < BIG_CHANCE;
@@ -128,7 +135,12 @@ function spawn() {
   const start = performance.now();
   function fall(now) {
     const t = (now - start) / (FALL_SECONDS * 1000);
-    if (t >= 1) { el.remove(); setStreak(0); return; }   /* 漏接：连击清零 */
+    if (t >= 1) {                                        /* 漏接：连击清零并提示 */
+      el.remove();
+      if (streak >= 2) missSound();
+      setStreak(0);
+      return;
+    }
     el.style.top = (-50 + t * (innerHeight + 100)) + 'px';
     if (el.isConnected) requestAnimationFrame(fall);
   }
