@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>Coin Coding 演示版</title>
+<style>
+  body { margin:0; height:100vh; overflow:hidden; background:#1a1d24; font-family:-apple-system,sans-serif; }
+  #hud { position:fixed; top:16px; right:20px; color:#ffd75e; font-size:20px; font-weight:700;
+         background:rgba(0,0,0,.45); padding:8px 16px; border-radius:20px; z-index:10; }
+  #status { position:fixed; top:16px; left:20px; color:#9aa3b2; font-size:14px;
+            background:rgba(0,0,0,.45); padding:8px 14px; border-radius:20px; }
+  #status.working { color:#7ee08a; }
+  #status.paused { color:#ffce4d; }
+  .coin { position:absolute; border-radius:50%; cursor:pointer; user-select:none;
+          display:flex; align-items:center; justify-content:center; font-weight:800; color:#7a4d00;
+          background:radial-gradient(circle at 35% 30%, #ffe89a, #ffc83d 60%, #d99a1b);
+          box-shadow:0 2px 8px rgba(0,0,0,.4), inset 0 0 0 3px rgba(255,255,255,.35);
+          transition:transform .08s; }
+  .coin:active { transform:scale(.85); }
+  .coin.big { background:radial-gradient(circle at 35% 30%, #fff7d1, #ffd75e 55%, #e8a200);
+              box-shadow:0 0 18px rgba(255,215,94,.8), inset 0 0 0 3px rgba(255,255,255,.5); }
+  .pop { position:absolute; color:#ffd75e; font-weight:800; pointer-events:none;
+         animation:rise .6s ease-out forwards; }
+  @keyframes rise { to { transform:translateY(-40px); opacity:0; } }
+  #testBtn { position:fixed; bottom:20px; right:20px; padding:10px 18px; border:none; border-radius:10px;
+             background:#3b82f6; color:#fff; font-size:14px; cursor:pointer; }
+</style>
+</head>
+<body>
+<div id="status">等待 Claude 开工…</div>
+<div id="hud">🪙 0</div>
+<button id="testBtn">测试模式：开始掉币</button>
+<script>
+const FALL_SECONDS = 4, SPAWN_MS = 2000, BIG_CHANCE = 0.05;
+let coins = parseInt(localStorage.getItem('coins') || '0');
+let working = false, testMode = false, spawnTimer = null;
+const hud = document.getElementById('hud'), statusEl = document.getElementById('status');
+const btn = document.getElementById('testBtn');
+hud.textContent = '🪙 ' + coins;
+
+function spawn() {
+  const big = Math.random() < BIG_CHANCE;
+  const size = big ? 64 : 44, value = big ? 10 : 1;
+  const el = document.createElement('div');
+  el.className = 'coin' + (big ? ' big' : '');
+  el.style.width = el.style.height = size + 'px';
+  el.style.fontSize = size * 0.38 + 'px';
+  el.textContent = value;
+  el.style.left = Math.random() * (innerWidth - size) + 'px';
+  el.style.top = -size + 'px';
+  document.body.appendChild(el);
+  const start = performance.now();
+  function fall(now) {
+    const t = (now - start) / (FALL_SECONDS * 1000);
+    if (t >= 1) { el.remove(); return; }
+    el.style.top = (-64 + t * (innerHeight + 128)) + 'px';
+    if (el.isConnected) requestAnimationFrame(fall);
+  }
+  requestAnimationFrame(fall);
+  el.onmousedown = e => {
+    coins += value;
+    localStorage.setItem('coins', coins);
+    hud.textContent = '🪙 ' + coins;
+    const pop = document.createElement('div');
+    pop.className = 'pop'; pop.textContent = '+' + value;
+    pop.style.left = e.clientX + 'px'; pop.style.top = (e.clientY - 20) + 'px';
+    document.body.appendChild(pop);
+    setTimeout(() => pop.remove(), 600);
+    el.remove();
+  };
+}
+
+function setWorking(on, label, cls) {
+  statusEl.textContent = label; statusEl.className = cls || '';
+  if (on === working) return;
+  working = on;
+  if (on) { spawn(); spawnTimer = setInterval(spawn, SPAWN_MS); }
+  else { clearInterval(spawnTimer); }
+}
+
+btn.onclick = () => {
+  testMode = !testMode;
+  btn.textContent = testMode ? '测试模式：停止' : '测试模式：开始掉币';
+  if (testMode) setWorking(true, '测试模式', 'working');
+  else setWorking(false, '等待 Claude 开工…');
+};
+
+async function poll() {
+  if (testMode) return;
+  try {
+    const r = await fetch('/state.txt?' + Date.now());
+    const s = (await r.text()).trim();
+    if (s === 'working') setWorking(true, 'Claude 工作中', 'working');
+    else if (s === 'paused') setWorking(false, 'Claude 在等你批准', 'paused');
+    else setWorking(false, 'Claude 空闲中');
+  } catch (e) { /* 没连服务器时仅测试模式可用 */ }
+}
+setInterval(poll, 500);
+</script>
+</body>
+</html>
