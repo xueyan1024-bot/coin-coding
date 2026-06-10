@@ -21,7 +21,9 @@
   #hud { color:var(--bright); }
   #hud b { color:var(--amber); font-weight:600; }
 
-  .coin { position:absolute; z-index:5; cursor:pointer; user-select:none; text-align:center;
+  .coin { position:absolute; z-index:5; cursor:pointer; user-select:none;
+          display:flex; align-items:center; justify-content:center;
+          border:2px solid currentColor; border-radius:50%;
           color:var(--amber); font-weight:600; }
   .coin.big { color:var(--green); }
   .coin:active { opacity:.4; }
@@ -104,10 +106,11 @@ function spawn() {
   const el = document.createElement('div');
   el.className = 'coin' + (big ? ' big' : '');
   el.textContent = '$' + (big ? value : '');
-  el.style.fontSize = (big ? 30 : 24) + 'px';
-  el.style.padding = '10px';            /* 易点击的热区 */
-  el.style.left = Math.random() * (innerWidth - 60) + 'px';
-  el.style.top = '-50px';
+  const size = big ? 60 : 44;
+  el.style.width = el.style.height = size + 'px';
+  el.style.fontSize = (big ? 22 : 20) + 'px';
+  el.style.left = Math.random() * (innerWidth - size) + 'px';
+  el.style.top = '-64px';
   document.body.appendChild(el);
   const start = performance.now();
   function fall(now) {
