@@ -7,7 +7,7 @@ let stateFile = stateDir + "/state.txt"
 let coinsFile = stateDir + "/coins.txt"
 
 // 数值（与 PRD V1.1 一致；正式版改为服务端下发）
-let spawnInterval: TimeInterval = 2.0
+let spawnInterval: TimeInterval = 1.5
 let fallSeconds: CGFloat = 6.0
 let bigChance: Double = 0.05
 
