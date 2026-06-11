@@ -85,6 +85,16 @@ final class Beeper {
     }
 }
 
+// 自绘文字视图：NSTextField 在毛玻璃环境下颜色会被系统活力混合洗掉（实测关不掉），
+// 自己 draw 的内容不受影响（金币 CoinView 同理，琥珀色一直正常）
+final class HUDTextView: NSView {
+    var text = NSAttributedString() { didSet { needsDisplay = true } }
+    override var allowsVibrancy: Bool { return false }
+    override func draw(_ dirtyRect: NSRect) {
+        text.draw(at: NSPoint(x: 1, y: (bounds.height - text.size().height) / 2))
+    }
+}
+
 // 不抢焦点的悬浮面板：点金币不会让终端失去输入焦点
 final class GamePanel: NSPanel {
     override var canBecomeKey: Bool { return false }
@@ -131,7 +141,8 @@ final class GripView: NSView {
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var statusItem: NSStatusItem!
     var panel: GamePanel!
-    var hud: NSTextField!
+    var hud: HUDTextView!
+    var hudBox: NSVisualEffectView!   // 计数文字的毛玻璃底，浅色桌面下保证可读
     var grip: GripView!
     var coinsItem: NSMenuItem!
     var testItem: NSMenuItem!
@@ -183,11 +194,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         // 近乎透明的底色：肉眼不可见，但让透明区域能接住鼠标（否则系统会让点击落到下层窗口）
         panel.contentView?.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.01).cgColor
 
-        hud = NSTextField(labelWithString: "")
-        hud.alignment = .right
-        hud.lineBreakMode = .byClipping
-        hud.frame = NSRect(x: 12, y: h - 38, width: w - 24, height: 26)
-        hud.autoresizingMask = [.width, .minYMargin]   // 宽度跟随窗口，贴右上角
+        panel.appearance = NSAppearance(named: .darkAqua)    // 整窗锁定深色外观
+
+        hudBox = NSVisualEffectView(frame: NSRect(x: w - 130, y: h - 38, width: 118, height: 26))
+        hudBox.material = .hudWindow
+        hudBox.blendingMode = .behindWindow   // 模糊的是窗口后面的桌面内容
+        hudBox.state = .active
+        hudBox.wantsLayer = true
+        hudBox.layer?.cornerRadius = 5
+        hudBox.layer?.masksToBounds = true
+        // 毛玻璃上再压一层半透明深色，浅色背景下也保持深底
+        let tint = NSView(frame: hudBox.bounds)
+        tint.autoresizingMask = [.width, .height]
+        tint.wantsLayer = true
+        tint.layer?.backgroundColor = colBg.withAlphaComponent(0.55).cgColor
+        hudBox.addSubview(tint)
+        panel.contentView?.addSubview(hudBox)
+
+        // 自绘文字层叠在毛玻璃上方（金币视图同款画法，不受系统洗色影响）
+        hud = HUDTextView(frame: .zero)
         panel.contentView?.addSubview(hud)
 
         grip = GripView(frame: NSRect(x: w - 18, y: 0, width: 18, height: 18))
@@ -212,21 +237,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     func updateHUD() {
-        // 命令行样式：coins = N（N 为琥珀色）；对齐必须写进富文本，控件的 alignment 对富文本无效
+        // 命令行样式：coins = N（N 为琥珀色），毛玻璃底紧贴文字、靠右上角
         let mono = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
-        let right = NSMutableParagraphStyle()
-        right.alignment = .right
-        // 窗口很窄且数字很大时，自动从 coins = N 降级为 $ N
-        let narrow = hud.map {
-            NSAttributedString(string: "coins = \(coins)", attributes: [.font: mono]).size().width
-                > $0.frame.width
-        } ?? false
-        let s = NSMutableAttributedString(string: narrow ? "$ " : "coins = ",
-            attributes: [.font: mono, .foregroundColor: colBright, .paragraphStyle: right])
-        s.append(NSAttributedString(string: "\(coins)",
-            attributes: [.font: NSFont.monospacedSystemFont(ofSize: 13, weight: .semibold),
-                         .foregroundColor: colAmber, .paragraphStyle: right]))
-        hud?.attributedStringValue = s
+        if let hud = hud, let box = hudBox, let content = panel?.contentView {
+            let pad: CGFloat = 8   // 文字四周统一留白
+            let avail = content.bounds.width - 24
+            // 窗口很窄且数字很大时，自动从 coins = N 降级为 $ N
+            let fullWidth = NSAttributedString(string: "coins = \(coins)",
+                attributes: [.font: mono]).size().width + pad * 2
+            let narrow = fullWidth > avail
+            let s = NSMutableAttributedString(string: narrow ? "$ " : "coins = ",
+                attributes: [.font: mono, .foregroundColor: colBright])
+            s.append(NSAttributedString(string: "\(coins)",
+                attributes: [.font: NSFont.monospacedSystemFont(ofSize: 13, weight: .semibold),
+                             .foregroundColor: colAmber]))
+            hud.text = s
+            let textSize = s.size()
+            let boxW = min(ceil(textSize.width) + pad * 2, avail)
+            let boxH = ceil(textSize.height) + pad * 2
+            box.frame = NSRect(x: content.bounds.width - boxW - 12,
+                               y: content.bounds.height - boxH - 12, width: boxW, height: boxH)
+            // 文字层与毛玻璃同框叠放（文字在视图内自行垂直居中、左侧从 pad 起笔）
+            hud.frame = NSRect(x: box.frame.origin.x + pad, y: box.frame.origin.y,
+                               width: boxW - pad * 2 + 2, height: boxH)
+        }
         statusItem?.button?.title = "$ \(coins)"
         statusItem?.button?.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
         coinsItem?.title = "coins = \(coins)"
