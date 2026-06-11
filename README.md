@@ -44,7 +44,7 @@ Coin Coding hooks into Claude Code's activity via Claude Code Hooks.
 
 ## Install
 
-Requires macOS. Takes about 30 seconds.
+Requires **macOS** and **Claude Code**. Windows is not supported. Takes about 30 seconds.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/xueyan1024-bot/coin-coding/main/install.sh | bash
@@ -112,7 +112,7 @@ Coin Coding 通过 Claude Code Hooks 感知 Agent 的工作状态。
 
 ## 安装
 
-需要 macOS，约 30 秒完成。
+需要 **macOS** 和 **Claude Code**，暂不支持 Windows。约 30 秒完成。
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/xueyan1024-bot/coin-coding/main/install.sh | bash
