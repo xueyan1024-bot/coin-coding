@@ -27,7 +27,8 @@ let colAmber = hexColor(0xd29922)
 final class CoinView: NSView {
     let value: Int
     var onCollect: ((CoinView) -> Void)?
-    var spinAngle: CGFloat = 0   // 大金币绕屏幕竖直轴翻面的角度
+    var spinAngle: CGFloat = 0      // 大金币绕屏幕竖直轴翻面的角度
+    var customImage: NSImage?       // 用户上传的自定义金币图片
 
     init(value: Int, size: CGFloat, x: CGFloat, y: CGFloat) {
         self.value = value
@@ -47,6 +48,14 @@ final class CoinView: NSView {
             flip.scaleX(by: k, yBy: 1)
             flip.translateX(by: -bounds.midX, yBy: 0)
             flip.concat()
+        }
+        if let img = customImage {
+            // 用户自定义图片：裁成圆形填满，大金币加描边区分
+            let clip = NSBezierPath(ovalIn: bounds.insetBy(dx: 1, dy: 1))
+            clip.addClip()
+            img.draw(in: bounds.insetBy(dx: 1, dy: 1))
+            if big { colAmber.withAlphaComponent(0.7).setStroke(); clip.lineWidth = 2; clip.stroke() }
+            return
         }
         let ring = NSBezierPath(ovalIn: bounds.insetBy(dx: 1.5, dy: 1.5))
         colAmber.setStroke()
@@ -180,6 +189,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     let beeper = Beeper()
     var streak = 0
     let penta = [0, 2, 4, 7, 9]   // 连击沿五声音阶上行（与 demo 一致）
+    // 后端 & 个性化
+    var sessionStart: Date?
+    var sessionClicks: [Double] = []
+    var sessionCoins = 0
+    var coinLabel = "coins"
+    var customCoinImage: NSImage?
+    var loginItem: NSMenuItem!
+    var logoutItem: NSMenuItem!
+    var userItem: NSMenuItem!
+    var leaderboardPanel: NSWindow?
+    var settingsPanel: NSWindow?
     var coins = 0 {
         didSet {
             updateHUD()
@@ -195,6 +215,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         setupPanel()
         setupStatusItem()
         startTimers()
+        setupAuth()
         updateHUD()
     }
 
@@ -260,6 +281,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let menu = NSMenu()
         coinsItem = NSMenuItem(title: "coins = 0", action: nil, keyEquivalent: "")
         menu.addItem(coinsItem)
+
+        let lbItem = NSMenuItem(title: "> leaderboard", action: #selector(openLeaderboard), keyEquivalent: "l")
+        lbItem.target = self
+        menu.addItem(lbItem)
+
+        menu.addItem(.separator())
+
+        userItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        menu.addItem(userItem)
+        loginItem = NSMenuItem(title: "> login with github", action: #selector(doLogin), keyEquivalent: "")
+        loginItem.target = self
+        menu.addItem(loginItem)
+        logoutItem = NSMenuItem(title: "> logout", action: #selector(doLogout), keyEquivalent: "")
+        logoutItem.target = self
+        menu.addItem(logoutItem)
+
+        let settingsItem = NSMenuItem(title: "> settings", action: #selector(openSettings), keyEquivalent: ",")
+        settingsItem.target = self
+        menu.addItem(settingsItem)
+
+        menu.addItem(.separator())
         testItem = NSMenuItem(title: "test --start", action: #selector(toggleTest), keyEquivalent: "t")
         testItem.target = self
         menu.addItem(testItem)
@@ -278,10 +320,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             let pad: CGFloat = 8   // 文字四周统一留白
             let avail = content.bounds.width - 24
             // 窗口很窄且数字很大时，自动从 coins = N 降级为 $ N
-            let fullWidth = NSAttributedString(string: "coins = \(coins)",
+            let fullWidth = NSAttributedString(string: "\(coinLabel) = \(coins)",
                 attributes: [.font: mono]).size().width + pad * 2
             let narrow = fullWidth > avail
-            let s = NSMutableAttributedString(string: narrow ? "$ " : "coins = ",
+            let s = NSMutableAttributedString(string: narrow ? "$ " : "\(coinLabel) = ",
                 attributes: [.font: mono, .foregroundColor: colBright])
             s.append(NSAttributedString(string: "\(coins)",
                 attributes: [.font: NSFont.monospacedSystemFont(ofSize: 13, weight: .semibold),
@@ -298,7 +340,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         statusItem?.button?.title = "$ \(coins)"
         statusItem?.button?.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
-        coinsItem?.title = "coins = \(coins)"
+        coinsItem?.title = "\(coinLabel) = \(coins)"
     }
 
     func startTimers() {
@@ -308,7 +350,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             let s = (try? String(contentsOfFile: stateFile, encoding: .utf8))?
                 .trimmingCharacters(in: .whitespacesAndNewlines) ?? "idle"
             let now = self.testMode || s == "working"
-            if self.working && !now { self.streak = 0 }   // 收工时连击清零
+            if !self.working && now {   // 开始工作
+                self.sessionStart = Date(); self.sessionClicks = []; self.sessionCoins = 0
+            }
+            if self.working && !now {   // 结束工作
+                self.streak = 0; self.endSession()
+            }
             self.working = now
         })
         // 掉币
@@ -335,6 +382,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let coin = CoinView(value: big ? 10 : 1, size: size,
                             x: CGFloat.random(in: 0...maxX), y: content.bounds.height)
         coin.onCollect = { [weak self] c in self?.collect(c) }
+        coin.customImage = customCoinImage
         content.addSubview(coin)
         coinViews.append(coin)
     }
@@ -363,6 +411,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     func collect(_ coin: CoinView) {
         coins += coin.value
+        sessionCoins += coin.value
+        sessionClicks.append(Date().timeIntervalSince1970)
         streak += 1
         let i = min(streak, 20)
         let semis = (i / 5) * 12 + penta[i % 5]
@@ -400,6 +450,178 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc func toggleTest() {
         testMode = !testMode
         testItem.title = testMode ? "test --stop" : "test --start"
+    }
+
+    // MARK: - Auth
+
+    func setupAuth() {
+        SupabaseAuth.shared.onChange = { [weak self] session in
+            self?.updateAuthMenu()
+            if session != nil { self?.syncFromServer() }
+        }
+        updateAuthMenu()
+        if SupabaseAuth.shared.isLoggedIn { syncFromServer() }
+    }
+
+    func updateAuthMenu() {
+        let loggedIn = SupabaseAuth.shared.isLoggedIn
+        userItem.title  = loggedIn ? "  signed in as @\(SupabaseAuth.shared.session!.githubUsername)" : ""
+        userItem.isHidden = !loggedIn
+        loginItem.isHidden  = loggedIn
+        logoutItem.isHidden = !loggedIn
+    }
+
+    func syncFromServer() {
+        SupabaseAPI.shared.fetchProfile { [weak self] profile in
+            guard let self, let profile else { return }
+            self.coins     = profile.totalCoins
+            self.coinLabel = profile.coinName
+            if let urlStr = profile.coinImageUrl, let url = URL(string: urlStr) {
+                URLSession.shared.dataTask(with: url) { data, _, _ in
+                    guard let data, let img = NSImage(data: data) else { return }
+                    DispatchQueue.main.async { self.customCoinImage = img }
+                }.resume()
+            }
+        }
+    }
+
+    func endSession() {
+        guard SupabaseAuth.shared.isLoggedIn,
+              let start = sessionStart, sessionCoins > 0 else { sessionStart = nil; return }
+        let end = Date()
+        let clicks = sessionClicks
+        sessionStart = nil; sessionClicks = []
+        SupabaseAPI.shared.submitCoins(start: start, end: end, earned: sessionCoins, clicks: clicks) { [weak self] ok in
+            if ok { self?.syncFromServer() }
+        }
+    }
+
+    @objc func doLogin()  { SupabaseAuth.shared.login() }
+    @objc func doLogout() { SupabaseAuth.shared.logout(); updateAuthMenu() }
+
+    // MARK: - Leaderboard
+
+    @objc func openLeaderboard() {
+        leaderboardPanel?.close()
+        let w = 340, h = 460
+        let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: w, height: h),
+                           styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        win.title = "leaderboard"
+        win.appearance = NSAppearance(named: .darkAqua)
+        win.backgroundColor = colBg
+        win.center()
+        leaderboardPanel = win
+
+        let tv = NSTextField(wrappingLabelWithString: "loading…")
+        tv.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+        tv.textColor = colBright
+        tv.backgroundColor = .clear
+        tv.frame = NSRect(x: 20, y: 20, width: w - 40, height: h - 50)
+        tv.autoresizingMask = [.width, .height]
+        win.contentView?.addSubview(tv)
+        win.makeKeyAndOrderFront(nil)
+
+        SupabaseAPI.shared.fetchLeaderboard { [weak self] entries in
+            guard let self else { return }
+            let myName = SupabaseAuth.shared.session?.githubUsername ?? ""
+            var lines = ["  rank   user                    \(self.coinLabel)", String(repeating: "─", count: 48)]
+            for (i, e) in entries.enumerated() {
+                let rank  = String(format: "%4d", i + 1)
+                let user  = e.githubUsername.padding(toLength: 22, withPad: " ", startingAt: 0)
+                let score = "\(e.totalCoins)"
+                lines.append("  \(rank)   \(user)  \(score)")
+            }
+            if !myName.isEmpty && !entries.contains(where: { $0.githubUsername == myName }) {
+                lines.append(String(repeating: "─", count: 48))
+                lines.append("   →    you're not ranked yet")
+            }
+            tv.stringValue = lines.joined(separator: "\n")
+        }
+    }
+
+    // MARK: - Settings
+
+    @objc func openSettings() {
+        settingsPanel?.close()
+        let w = 300, h = 220
+        let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: w, height: h),
+                           styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        win.title = "settings"
+        win.appearance = NSAppearance(named: .darkAqua)
+        win.backgroundColor = colBg
+        win.center()
+        settingsPanel = win
+
+        func label(_ s: String, x: CGFloat, y: CGFloat) -> NSTextField {
+            let f = NSTextField(labelWithString: s)
+            f.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+            f.textColor = colDim
+            f.frame = NSRect(x: x, y: y, width: 100, height: 20)
+            return f
+        }
+
+        // coin name
+        win.contentView?.addSubview(label("coin name", x: 20, y: 160))
+        let nameField = NSTextField(frame: NSRect(x: 120, y: 158, width: 150, height: 22))
+        nameField.stringValue = coinLabel
+        nameField.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+        nameField.appearance = NSAppearance(named: .darkAqua)
+        win.contentView?.addSubview(nameField)
+
+        // coin image
+        win.contentView?.addSubview(label("coin image", x: 20, y: 120))
+        let imgBtn = NSButton(title: "upload…", target: self, action: #selector(pickCoinImage))
+        imgBtn.frame = NSRect(x: 120, y: 118, width: 100, height: 22)
+        imgBtn.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+        win.contentView?.addSubview(imgBtn)
+
+        // save
+        let saveBtn = NSButton(frame: NSRect(x: 110, y: 30, width: 80, height: 28))
+        saveBtn.title = "save"
+        saveBtn.bezelStyle = .rounded
+        saveBtn.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+        saveBtn.target = self
+        saveBtn.action = #selector(saveSettings)
+        win.contentView?.addSubview(saveBtn)
+
+        // stash reference for save handler
+        win.contentView?.viewWithTag(9001)?.removeFromSuperview()
+        nameField.tag = 9001
+        win.makeKeyAndOrderFront(nil)
+    }
+
+    @objc func pickCoinImage() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.png, .jpeg, .gif, .heic]
+        panel.canChooseFiles = true; panel.canChooseDirectories = false
+        panel.begin { [weak self] resp in
+            guard let self, resp == .OK, let url = panel.url,
+                  let img = NSImage(contentsOf: url) else { return }
+            let size: CGFloat = 88
+            let cropped = NSImage(size: NSSize(width: size, height: size))
+            cropped.lockFocus()
+            NSBezierPath(ovalIn: NSRect(x: 0, y: 0, width: size, height: size)).addClip()
+            img.draw(in: NSRect(x: 0, y: 0, width: size, height: size))
+            cropped.unlockFocus()
+            guard let tiff = cropped.tiffRepresentation,
+                  let bmp = NSBitmapImageRep(data: tiff),
+                  let png = bmp.representation(using: .png, properties: [:]) else { return }
+            SupabaseAPI.shared.uploadCoinImage(png) { [weak self] urlStr in
+                guard let self, urlStr != nil else { return }
+                self.customCoinImage = cropped
+            }
+        }
+    }
+
+    @objc func saveSettings() {
+        guard let field = settingsPanel?.contentView?.viewWithTag(9001) as? NSTextField else { return }
+        let newName = field.stringValue.trimmingCharacters(in: .whitespaces)
+        if !newName.isEmpty && newName != coinLabel {
+            coinLabel = newName
+            updateHUD()
+            SupabaseAPI.shared.updateProfile(coinName: newName)
+        }
+        settingsPanel?.close()
     }
 }
 
