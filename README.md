@@ -27,7 +27,7 @@ Coin Coding hooks into Claude Code's activity via Claude Code Hooks.
 - When Claude starts executing a task: Coin Coding wakes up, the floating window appears, coins start falling
 - When Claude goes idle: coins stop
 
-> **Note:** Coin Coding can tell when Claude Code is working or idle. It can't yet detect when Claude Code is waiting for a permission prompt (the dialog asking you to approve a tool use). In that case, coins stop — same as idle.
+> **Note:** Due to technical limitations, Coin Coding cannot detect when Claude Code is waiting for a **permission prompt** (the dialog asking you to approve a tool use). The game will keep running in those moments, even though your agent is paused.
 
 ---
 
@@ -95,7 +95,7 @@ Coin Coding 通过 Claude Code Hooks 感知 Agent 的工作状态。
 - 当 Claude 开始执行任务时：Coin Coding 被唤醒、悬浮窗口自动出现、金币开始下落
 - 当 Claude 进入空闲状态时：金币停止下落
 
-> **注意：** Coin Coding 目前能识别工作中和空闲两种状态，暂时无法检测 Claude Code 在等待权限确认弹窗的状态（Agent 要执行某个操作、弹出让你批准的那个窗口）。这种情况下金币会停止下落，和空闲表现一样。
+> **注意：** 由于技术限制，Coin Coding 暂时无法检测 Claude Code 在等待 **Permission prompt**（弹出让你批准操作的确认弹窗）的状态。出现弹窗时，游戏会继续运行，即使 Agent 实际上已暂停。
 
 ---
 
