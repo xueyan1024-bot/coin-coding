@@ -29,7 +29,8 @@
           display:flex; align-items:center; justify-content:center;
           border:2px solid currentColor; border-radius:50%;
           color:var(--amber); font-weight:600; }
-  .coin.big { color:var(--green); }
+  .coin.big { animation:spin 1.6s linear infinite; }   /* 大金币同款样式，靠旋转区分 */
+  @keyframes spin { to { transform:rotate(-360deg); } }
   .coin:active { opacity:.4; }
 
   .pop { position:absolute; pointer-events:none; z-index:8; color:var(--dim);
@@ -126,9 +127,9 @@ function spawn() {
   const el = document.createElement('div');
   el.className = 'coin' + (big ? ' big' : '');
   el.textContent = '$' + (big ? value : '');
-  const size = big ? 60 : 44;
+  const size = 44;
   el.style.width = el.style.height = size + 'px';
-  el.style.fontSize = (big ? 22 : 20) + 'px';
+  el.style.fontSize = (big ? 14 : 20) + 'px';
   el.style.left = Math.random() * (innerWidth - size) + 'px';
   el.style.top = '-64px';
   document.body.appendChild(el);

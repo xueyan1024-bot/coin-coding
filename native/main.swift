@@ -35,17 +35,16 @@ final class CoinView: NSView {
     required init?(coder: NSCoder) { fatalError("not used") }
 
     override func draw(_ dirtyRect: NSRect) {
-        // 代码风金币：同色圆圈描边 + 等宽 $，无填充（大金币绿色 $10）
+        // 代码风金币：琥珀色圆圈描边 + 等宽 $，无填充；大金币同款同尺寸，靠旋转区分
         let big = value >= 10
-        let color = big ? colGreen : colAmber
         let ring = NSBezierPath(ovalIn: bounds.insetBy(dx: 1.5, dy: 1.5))
-        color.setStroke()
+        colAmber.setStroke()
         ring.lineWidth = 2
         ring.stroke()
         let text = big ? "$\(value)" : "$"
         let attrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedSystemFont(ofSize: big ? 22 : 20, weight: .semibold),
-            .foregroundColor: color,
+            .font: NSFont.monospacedSystemFont(ofSize: big ? 14 : 20, weight: .semibold),
+            .foregroundColor: colAmber,
         ]
         let s = text.size(withAttributes: attrs)
         text.draw(at: NSPoint(x: (bounds.width - s.width) / 2,
@@ -313,7 +312,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func spawn() {
         guard let content = panel.contentView else { return }
         let big = Double.random(in: 0..<1) < bigChance
-        let size: CGFloat = big ? 60 : 44
+        let size: CGFloat = 44
         let maxX = content.bounds.width - size
         guard maxX > 0 else { return }
         let coin = CoinView(value: big ? 10 : 1, size: size,
@@ -329,6 +328,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         for coin in coinViews {
             let speed = (h + coin.frame.height) / fallSeconds
             coin.setFrameOrigin(NSPoint(x: coin.frame.origin.x, y: coin.frame.origin.y - speed * dt))
+            if coin.value >= 10 {   // 大金币边落边转
+                coin.frameCenterRotation -= 150 * dt
+            }
         }
         coinViews.removeAll { coin in
             if coin.frame.maxY < 0 {        // 漏接：无惩罚，但连击清零并低音提示
