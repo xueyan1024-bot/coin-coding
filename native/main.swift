@@ -11,6 +11,8 @@ let pendingFile = stateDir + "/pending.json"
 // 数值（与 PRD V1.1 一致；正式版改为服务端下发）
 let spawnInterval: TimeInterval = 0.8
 let fallSeconds: CGFloat = 6.0
+// 固定像素速度（按默认窗高 480 折算），窗口改大小不影响金币下落快慢
+let fallSpeed: CGFloat = (480 + 44) / fallSeconds
 let bigChance: Double = 0.05
 
 // 调色板（与 demo/index.html 的 :root 变量一致）
@@ -77,6 +79,12 @@ final class CoinView: NSView {
 
 // 8-bit 风格蜂鸣器（与 demo 的 WebAudio beep 等价：方波/正弦 + 指数衰减）
 final class Beeper {
+    // 音色预设：beep 方波（默认）/ bubble 水泡滑音 / ding 金属铃声 / off 静音
+    enum Style: String, CaseIterable { case beep, bubble, ding, off }
+    var style: Style = Style(rawValue: UserDefaults.standard.string(forKey: "soundStyle") ?? "beep") ?? .beep {
+        didSet { UserDefaults.standard.set(style.rawValue, forKey: "soundStyle") }
+    }
+
     private let engine = AVAudioEngine()
     private let player = AVAudioPlayerNode()
     private let format = AVAudioFormat(standardFormatWithSampleRate: 44100, channels: 1)!
@@ -89,16 +97,35 @@ final class Beeper {
     }
 
     func beep(freq: Double, vol: Float, dur: Double, sine: Bool = false) {
-        guard engine.isRunning else { return }
+        guard engine.isRunning, style != .off else { return }
+        var dur = dur, vol = vol
+        switch style {
+        case .ding:   dur = max(dur, 0.4); vol *= 2.5  // 铃声要余音，正弦能量低补音量
+        case .bubble: vol *= 3                         // 正弦波能量低，补偿音量
+        default: break
+        }
         let sr = format.sampleRate
         let frames = AVAudioFrameCount(sr * dur)
         guard let buf = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames) else { return }
         buf.frameLength = frames
         let data = buf.floatChannelData![0]
+        var phaseAcc = 0.0    // 相位累加，滑音时频率连续变化不破音
         for i in 0..<Int(frames) {
             let t = Double(i) / sr
-            let phase = sin(2 * .pi * freq * t)
-            let wave = sine ? phase : (phase >= 0 ? 1.0 : -1.0)
+            let p = t / dur   // 0→1 进度
+            var f = freq
+            if style == .bubble { f = freq * (0.8 + 1.2 * p) }   // 频率上滑，像“啵”
+            phaseAcc += 2 * .pi * f / sr
+            let frac = (phaseAcc / (2 * .pi)).truncatingRemainder(dividingBy: 1)
+            let wave: Double
+            switch style {
+            case .bubble: wave = sin(phaseAcc)                       // 圆润正弦
+            case .ding:   // 铃铛：基音 + 两个非整数倍泛音（金属感来源），余音更长
+                wave = 0.6 * sin(2 * .pi * freq * 2 * t)
+                     + 0.3 * sin(2 * .pi * freq * 2 * 2.41 * t)
+                     + 0.15 * sin(2 * .pi * freq * 2 * 5.93 * t)
+            default:      wave = sine ? sin(phaseAcc) : (frac < 0.5 ? 1.0 : -1.0)
+            }
             data[i] = Float(wave * pow(0.001, t / dur)) * vol
         }
         player.scheduleBuffer(buf)
@@ -195,7 +222,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var sessionClicks: [Double] = []
     var sessionCoins = 0
     var coinLabel = "coins"
-    var customCoinImage: NSImage?
+    var customCoinImage: NSImage? {
+        didSet { coinViews.forEach { $0.customImage = customCoinImage; $0.needsDisplay = true } }
+    }
     var loginItem: NSMenuItem!
     var logoutItem: NSMenuItem!
     var userItem: NSMenuItem!
@@ -220,6 +249,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         setupStatusItem()
         startTimers()
         setupAuth()
+        loadSavedCoinImage()
         updateHUD()
     }
 
@@ -286,34 +316,52 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         coinsItem = NSMenuItem(title: "coins = 0", action: nil, keyEquivalent: "")
         menu.addItem(coinsItem)
 
-        let lbItem = NSMenuItem(title: "> leaderboard", action: #selector(openLeaderboard), keyEquivalent: "l")
+        let lbItem = NSMenuItem(title: "Leaderboard", action: #selector(openLeaderboard), keyEquivalent: "l")
         lbItem.target = self
         menu.addItem(lbItem)
 
+        // —— 个性化 ——
         menu.addItem(.separator())
 
-        userItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
-        menu.addItem(userItem)
-        loginItem = NSMenuItem(title: "> login with github", action: #selector(doLogin), keyEquivalent: "")
-        loginItem.target = self
-        menu.addItem(loginItem)
-        logoutItem = NSMenuItem(title: "> logout", action: #selector(doLogout), keyEquivalent: "")
-        logoutItem.target = self
-        menu.addItem(logoutItem)
+        let coinfaceItem = NSMenuItem(title: "Coinface", action: #selector(openSettings), keyEquivalent: ",")
+        coinfaceItem.target = self
+        menu.addItem(coinfaceItem)
 
-        let settingsItem = NSMenuItem(title: "> settings", action: #selector(openSettings), keyEquivalent: ",")
-        settingsItem.target = self
-        menu.addItem(settingsItem)
+        let soundItem = NSMenuItem(title: "Sound", action: nil, keyEquivalent: "")
+        let soundMenu = NSMenu()
+        for s in Beeper.Style.allCases {
+            let item = NSMenuItem(title: s.rawValue,
+                                  action: #selector(selectSound(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = s.rawValue
+            item.state = beeper.style == s ? .on : .off
+            soundMenu.addItem(item)
+        }
+        soundItem.submenu = soundMenu
+        menu.addItem(soundItem)
 
+        // —— 窗口 / 测试 ——
         menu.addItem(.separator())
-        testItem = NSMenuItem(title: "test --start", action: #selector(toggleTest), keyEquivalent: "t")
-        testItem.target = self
-        menu.addItem(testItem)
         windowItem = NSMenuItem(title: "window --hide", action: #selector(toggleWindow), keyEquivalent: "w")
         windowItem.target = self
         menu.addItem(windowItem)
+        testItem = NSMenuItem(title: "test --start", action: #selector(toggleTest), keyEquivalent: "t")
+        testItem.target = self
+        menu.addItem(testItem)
+
+        // —— 账号 ——
         menu.addItem(.separator())
-        menu.addItem(NSMenuItem(title: "exit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+        userItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        menu.addItem(userItem)
+        loginItem = NSMenuItem(title: "Login with GitHub", action: #selector(doLogin), keyEquivalent: "")
+        loginItem.target = self
+        menu.addItem(loginItem)
+        logoutItem = NSMenuItem(title: "Logout", action: #selector(doLogout), keyEquivalent: "")
+        logoutItem.target = self
+        menu.addItem(logoutItem)
+
+        menu.addItem(.separator())
+        menu.addItem(NSMenuItem(title: "Exit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         statusItem.menu = menu
     }
 
@@ -393,10 +441,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     func tick(dt: CGFloat) {
         guard !coinViews.isEmpty else { return }
-        let h = panel.contentView?.bounds.height ?? 480
         for coin in coinViews {
-            let speed = (h + coin.frame.height) / fallSeconds
-            coin.setFrameOrigin(NSPoint(x: coin.frame.origin.x, y: coin.frame.origin.y - speed * dt))
+            coin.setFrameOrigin(NSPoint(x: coin.frame.origin.x, y: coin.frame.origin.y - fallSpeed * dt))
             if coin.value >= 10 {   // 大金币边落边绕竖直轴翻面
                 coin.spinAngle += 3.5 * dt
                 coin.needsDisplay = true
@@ -451,6 +497,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     @objc func toggleWindow() { setWindowShown(!panel.isVisible) }
 
+    @objc func selectSound(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String,
+              let s = Beeper.Style(rawValue: raw) else { return }
+        beeper.style = s
+        sender.menu?.items.forEach { $0.state = ($0 === sender) ? .on : .off }
+        if s != .off { beeper.beep(freq: 659, vol: 0.04, dur: 0.1) }   // 试听一声
+    }
+
     @objc func toggleTest() {
         testMode = !testMode
         testItem.title = testMode ? "test --stop" : "test --start"
@@ -469,7 +523,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     func updateAuthMenu() {
         let loggedIn = SupabaseAuth.shared.isLoggedIn
-        userItem.title  = loggedIn ? "  signed in as @\(SupabaseAuth.shared.session!.githubUsername)" : ""
+        userItem.title  = loggedIn ? "Signed in as @\(SupabaseAuth.shared.session!.githubUsername)" : ""
         userItem.isHidden = !loggedIn
         loginItem.isHidden  = loggedIn
         logoutItem.isHidden = !loggedIn
@@ -547,12 +601,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     @objc func openLeaderboard() {
         leaderboardPanel?.close()
+        leaderboardPanel = nil
         let w = 340, h = 460
         let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: w, height: h),
                            styleMask: [.titled, .closable], backing: .buffered, defer: false)
-        win.title = "leaderboard"
+        win.title = "Leaderboard"
         win.appearance = NSAppearance(named: .darkAqua)
         win.backgroundColor = colBg
+        win.isReleasedWhenClosed = false
         win.center()
         leaderboardPanel = win
 
@@ -563,13 +619,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         tv.frame = NSRect(x: 20, y: 20, width: w - 40, height: h - 50)
         tv.autoresizingMask = [.width, .height]
         win.contentView?.addSubview(tv)
-        NSApp.activate(ignoringOtherApps: true)
-        win.makeKeyAndOrderFront(nil)
+        win.orderFrontRegardless()
 
         SupabaseAPI.shared.fetchLeaderboard { [weak self] entries in
             guard let self else { return }
             let myName = SupabaseAuth.shared.session?.githubUsername ?? ""
-            var lines = ["  rank   user                    \(self.coinLabel)", String(repeating: "─", count: 48)]
+            var lines = ["  rank   user                    coins", String(repeating: "─", count: 38)]
             for (i, e) in entries.enumerated() {
                 let rank  = String(format: "%4d", i + 1)
                 let user  = e.githubUsername.padding(toLength: 22, withPad: " ", startingAt: 0)
@@ -577,28 +632,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 lines.append("  \(rank)   \(user)  \(score)")
             }
             if !myName.isEmpty && !entries.contains(where: { $0.githubUsername == myName }) {
-                lines.append(String(repeating: "─", count: 48))
-                lines.append("   →    you're not ranked yet")
+                // 不在前 20：另查自己的真实名次显示在底部
+                SupabaseAPI.shared.fetchMyRank { rank in
+                    lines.append(String(repeating: "─", count: 38))
+                    if let r = rank {
+                        let user = "you (@\(myName))".padding(toLength: 22, withPad: " ", startingAt: 0)
+                        lines.append("  \(String(format: "%4d", r))   \(user)  \(self.coins)")
+                    } else {
+                        lines.append("   →    you're not ranked yet")
+                    }
+                    tv.stringValue = lines.joined(separator: "\n")
+                }
+                return
             }
             tv.stringValue = lines.joined(separator: "\n")
         }
+    }
+
+    func loadSavedCoinImage() {
+        let tmp = PixelCanvasView(frame: NSRect(x: 0, y: 0, width: 1, height: 1))
+        guard tmp.pixelCount > 0 else { return }
+        customCoinImage = tmp.renderToImage()
     }
 
     // MARK: - Settings（像素画编辑器）
 
     @objc func openSettings() {
         settingsPanel?.close()
+        settingsPanel = nil
         let w: CGFloat = 360, h: CGFloat = 460
         let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: w, height: h),
                            styleMask: [.titled, .closable], backing: .buffered, defer: false)
-        win.title = "$ pixel editor"
+        win.title = "Coinface"
         win.appearance = NSAppearance(named: .darkAqua)
         win.backgroundColor = colBg
+        win.isReleasedWhenClosed = false
         win.center()
         settingsPanel = win
 
         // coin name 一行
-        let nameLabel = NSTextField(labelWithString: "coin name")
+        let nameLabel = NSTextField(labelWithString: "Coin name")
         nameLabel.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
         nameLabel.textColor = colDim
         nameLabel.frame = NSRect(x: 20, y: h - 48, width: 90, height: 20)
@@ -625,23 +698,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let btnW: CGFloat = 90, btnH: CGFloat = 28, btnY: CGFloat = 30
         let spacing: CGFloat = (w - btnW * 3) / 4
 
-        let resetBtn = makeBtn("重置", x: spacing, y: btnY, w: btnW, h: btnH,
+        let resetBtn = makeBtn("Reset", x: spacing, y: btnY, w: btnW, h: btnH,
                                action: #selector(resetCanvas))
         win.contentView?.addSubview(resetBtn)
 
-        let clearBtn = makeBtn("清空", x: spacing * 2 + btnW, y: btnY, w: btnW, h: btnH,
+        let clearBtn = makeBtn("Clear", x: spacing * 2 + btnW, y: btnY, w: btnW, h: btnH,
                                action: #selector(clearCanvas))
         win.contentView?.addSubview(clearBtn)
 
-        let createBtn = makeBtn("创建", x: spacing * 3 + btnW * 2, y: btnY, w: btnW, h: btnH,
+        let createBtn = makeBtn("Save", x: spacing * 3 + btnW * 2, y: btnY, w: btnW, h: btnH,
                                 action: #selector(createCoinArt))
         createBtn.tag = 9002
         win.contentView?.addSubview(createBtn)
         createButton = createBtn
 
         refreshCreateButton()
-        NSApp.activate(ignoringOtherApps: true)
-        win.makeKeyAndOrderFront(nil)
+        win.orderFrontRegardless()
     }
 
     private func makeBtn(_ title: String, x: CGFloat, y: CGFloat, w: CGFloat, h: CGFloat,
@@ -656,11 +728,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func refreshCreateButton() {
-        createButton?.isEnabled = (pixelCanvas?.pixelCount ?? 0) > 0
+        guard let canvas = pixelCanvas else { createButton?.isEnabled = false; return }
+        createButton?.isEnabled = canvas.pixelCount > 0 || canvas.showingDefault
     }
 
     @objc func resetCanvas() {
-        pixelCanvas?.restore(savedPixels)
+        // 只在画布里预览默认 $ 金币，点 save 才真正生效
+        pixelCanvas?.showDefault()
         refreshCreateButton()
     }
 
@@ -670,19 +744,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     @objc func createCoinArt() {
-        guard let canvas = pixelCanvas, canvas.pixelCount > 0 else { return }
-        canvas.savePixels()
-        savedPixels = canvas.pixels.map { $0 }
-        let img = canvas.renderToImage()
-        customCoinImage = img
+        guard let canvas = pixelCanvas else { return }
 
-        // 上传到 Supabase（如果已登录）
-        if SupabaseAuth.shared.isLoggedIn,
-           let tiff = img.tiffRepresentation,
-           let bmp = NSBitmapImageRep(data: tiff),
-           let png = bmp.representation(using: .png, properties: [:]) {
-            SupabaseAPI.shared.uploadCoinImage(png) { _ in }
-        }
+        if canvas.showingDefault {
+            // 保存"恢复默认"：删本地图案、游戏恢复 $、服务端也清掉
+            try? FileManager.default.removeItem(atPath: stateDir + "/pixels.json")
+            customCoinImage = nil
+            SupabaseAPI.shared.updateProfile(coinImageUrl: "")
+        } else if canvas.pixelCount > 0 {
+            canvas.savePixels()
+            let img = canvas.renderToImage()
+            customCoinImage = img
+            // 上传到 Supabase（如果已登录）
+            if SupabaseAuth.shared.isLoggedIn,
+               let tiff = img.tiffRepresentation,
+               let bmp = NSBitmapImageRep(data: tiff),
+               let png = bmp.representation(using: .png, properties: [:]) {
+                SupabaseAPI.shared.uploadCoinImage(png) { _ in }
+            }
+        } else { return }
 
         // 更新 coin name
         if let field = settingsPanel?.contentView?.viewWithTag(9001) as? NSTextField {

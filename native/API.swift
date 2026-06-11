@@ -64,7 +64,7 @@ final class SupabaseAPI {
               let uid = auth.session?.userId else { return }
         var body: [String: Any] = [:]
         if let n = coinName      { body["coin_name"]      = n }
-        if let u = coinImageUrl  { body["coin_image_url"] = u }
+        if let u = coinImageUrl  { body["coin_image_url"] = u.isEmpty ? NSNull() : u }   // 空串=清除
         guard !body.isEmpty else { return }
         var req = make("/rest/v1/profiles?id=eq.\(uid)", "PATCH", token)
         req.setValue("return=minimal", forHTTPHeaderField: "Prefer")
@@ -103,6 +103,24 @@ final class SupabaseAPI {
             completion(data.flatMap {
                 try? JSONDecoder().decode([LeaderboardEntry].self, from: $0)
             } ?? [])
+        }
+    }
+
+    // 自己的真实名次：数一下比我分高的有几个人，名次 = 那个数 + 1
+    func fetchMyRank(completion: @escaping (Int?) -> Void) {
+        guard let token = auth.session?.accessToken else { completion(nil); return }
+        fetchProfile { [weak self] profile in
+            guard let self, let p = profile, p.totalCoins > 0 else { completion(nil); return }
+            var req = self.make("/rest/v1/profiles?select=id&total_coins=gt.\(p.totalCoins)", "GET", token)
+            req.setValue("count=exact", forHTTPHeaderField: "Prefer")
+            req.setValue("0-0", forHTTPHeaderField: "Range")
+            self.run(req) { _, resp, _ in
+                guard let http = resp as? HTTPURLResponse,
+                      let cr = http.value(forHTTPHeaderField: "Content-Range"),
+                      let total = cr.components(separatedBy: "/").last,
+                      let n = Int(total) else { completion(nil); return }
+                completion(n + 1)
+            }
         }
     }
 

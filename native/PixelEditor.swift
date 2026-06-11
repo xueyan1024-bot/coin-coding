@@ -6,6 +6,7 @@ final class PixelCanvasView: NSView {
     static let n = 16
     var pixels: [[Bool]] = Array(repeating: Array(repeating: false, count: n), count: n)
     var onChange: (() -> Void)?
+    var showingDefault = false           // 重置后预览默认 $ 金币，点 save 才真正生效
     private var paintMode: Bool? = nil   // true=画, false=擦, nil=未按下
 
     var pixelCount: Int { pixels.flatMap { $0 }.filter { $0 }.count }
@@ -42,30 +43,39 @@ final class PixelCanvasView: NSView {
                                   y: bounds.height - CGFloat(row + 1) * s,
                                   width: s, height: s)
                 if !inCircle(col, row) {
-                    NSColor.black.withAlphaComponent(0.25).setFill()
-                    NSBezierPath(rect: rect).fill()
+                    continue   // 圆外不画，与窗口背景融为一体
                 } else if pixels[row][col] {
                     colAmber.setFill()
                     NSBezierPath(rect: rect).fill()
                 } else {
-                    colBg.withAlphaComponent(0.85).setFill()
-                    NSBezierPath(rect: rect).fill()
                     colDim.withAlphaComponent(0.25).setStroke()
                     let g = NSBezierPath(rect: rect.insetBy(dx: 0.5, dy: 0.5))
                     g.lineWidth = 0.5; g.stroke()
                 }
             }
         }
-        // 圆圈边界
-        let ring = NSBezierPath(ovalIn: bounds.insetBy(dx: 1, dy: 1))
-        colAmber.withAlphaComponent(0.5).setStroke()
-        ring.lineWidth = 1.5; ring.stroke()
+        // 圆圈边界（与游戏金币同款粗描边）
+        let ring = NSBezierPath(ovalIn: bounds.insetBy(dx: 2, dy: 2))
+        colAmber.setStroke()
+        ring.lineWidth = 4; ring.stroke()
+
+        // 默认金币预览：画布大圆即金币圆框，居中一个等宽 $ 即可
+        if showingDefault {
+            let attrs: [NSAttributedString.Key: Any] = [
+                .font: NSFont.monospacedSystemFont(ofSize: bounds.width * 0.45, weight: .semibold),
+                .foregroundColor: colAmber,
+            ]
+            let t = "$", ts = t.size(withAttributes: attrs)
+            t.draw(at: NSPoint(x: bounds.midX - ts.width / 2,
+                               y: bounds.midY - ts.height / 2), withAttributes: attrs)
+        }
     }
 
     // MARK: - Mouse（按下时确定涂/擦模式，拖拽保持一致）
 
     override func mouseDown(with e: NSEvent) {
         guard let (col, row) = cellAt(convert(e.locationInWindow, from: nil)) else { return }
+        showingDefault = false   // 开始画就退出默认预览
         paintMode = !pixels[row][col]
         pixels[row][col] = paintMode!
         needsDisplay = true; onChange?()
@@ -83,11 +93,14 @@ final class PixelCanvasView: NSView {
 
     func clear() {
         pixels = Array(repeating: Array(repeating: false, count: Self.n), count: Self.n)
+        showingDefault = false
         needsDisplay = true; onChange?()
     }
 
-    func restore(_ saved: [[Bool]]) {
-        pixels = saved; needsDisplay = true; onChange?()
+    func showDefault() {
+        pixels = Array(repeating: Array(repeating: false, count: Self.n), count: Self.n)
+        showingDefault = true
+        needsDisplay = true; onChange?()
     }
 
     // MARK: - Render to NSImage（用于设为金币图案）
