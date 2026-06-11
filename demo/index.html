@@ -29,8 +29,9 @@
           display:flex; align-items:center; justify-content:center;
           border:2px solid currentColor; border-radius:50%;
           color:var(--amber); font-weight:600; }
-  .coin.big { animation:spin 1.6s linear infinite; }   /* 大金币同款样式，靠旋转区分 */
-  @keyframes spin { to { transform:rotate(-360deg); } }
+  .coin.big { animation:spin 1.8s linear infinite; }   /* 大金币同款样式，绕竖直轴翻面区分 */
+  @keyframes spin { from { transform:perspective(300px) rotateY(0); }
+                    to { transform:perspective(300px) rotateY(360deg); } }
   .coin:active { opacity:.4; }
 
   .pop { position:absolute; pointer-events:none; z-index:8; color:var(--dim);

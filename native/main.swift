@@ -27,6 +27,7 @@ let colAmber = hexColor(0xd29922)
 final class CoinView: NSView {
     let value: Int
     var onCollect: ((CoinView) -> Void)?
+    var spinAngle: CGFloat = 0   // 大金币绕屏幕竖直轴翻面的角度
 
     init(value: Int, size: CGFloat, x: CGFloat, y: CGFloat) {
         self.value = value
@@ -35,8 +36,18 @@ final class CoinView: NSView {
     required init?(coder: NSCoder) { fatalError("not used") }
 
     override func draw(_ dirtyRect: NSRect) {
-        // 代码风金币：琥珀色圆圈描边 + 等宽 $，无填充；大金币同款同尺寸，靠旋转区分
+        // 代码风金币：琥珀色圆圈描边 + 等宽 $，无填充；大金币同款同尺寸，靠翻面旋转区分
         let big = value >= 10
+        if big {
+            // 模拟绕竖直轴的 3D 翻面：按 cos 横向压扁，转到背面时文字自然镜像
+            var k = cos(spinAngle)
+            if abs(k) < 0.06 { k = k < 0 ? -0.06 : 0.06 }   // 侧面时留一条线，避免压成零宽
+            let flip = NSAffineTransform()
+            flip.translateX(by: bounds.midX, yBy: 0)
+            flip.scaleX(by: k, yBy: 1)
+            flip.translateX(by: -bounds.midX, yBy: 0)
+            flip.concat()
+        }
         let ring = NSBezierPath(ovalIn: bounds.insetBy(dx: 1.5, dy: 1.5))
         colAmber.setStroke()
         ring.lineWidth = 2
@@ -328,8 +339,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         for coin in coinViews {
             let speed = (h + coin.frame.height) / fallSeconds
             coin.setFrameOrigin(NSPoint(x: coin.frame.origin.x, y: coin.frame.origin.y - speed * dt))
-            if coin.value >= 10 {   // 大金币边落边转
-                coin.frameCenterRotation -= 150 * dt
+            if coin.value >= 10 {   // 大金币边落边绕竖直轴翻面
+                coin.spinAngle += 3.5 * dt
+                coin.needsDisplay = true
             }
         }
         coinViews.removeAll { coin in
