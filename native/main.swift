@@ -3,9 +3,10 @@
 import AppKit
 import AVFoundation
 
-let stateDir = NSString(string: "~/.coincoding").expandingTildeInPath
-let stateFile = stateDir + "/state.txt"
-let coinsFile = stateDir + "/coins.txt"
+let stateDir   = NSString(string: "~/.coincoding").expandingTildeInPath
+let stateFile  = stateDir + "/state.txt"
+let coinsFile  = stateDir + "/coins.txt"
+let pendingFile = stateDir + "/pending.json"
 
 // 数值（与 PRD V1.1 一致；正式版改为服务端下发）
 let spawnInterval: TimeInterval = 0.8
@@ -50,11 +51,11 @@ final class CoinView: NSView {
             flip.concat()
         }
         if let img = customImage {
-            // 用户自定义图片：裁成圆形填满，大金币加描边区分
-            let clip = NSBezierPath(ovalIn: bounds.insetBy(dx: 1, dy: 1))
-            clip.addClip()
+            // 用户自定义像素画：圆形裁切填满，再叠画琥珀色圆框
+            NSBezierPath(ovalIn: bounds.insetBy(dx: 1, dy: 1)).addClip()
             img.draw(in: bounds.insetBy(dx: 1, dy: 1))
-            if big { colAmber.withAlphaComponent(0.7).setStroke(); clip.lineWidth = 2; clip.stroke() }
+            let ring2 = NSBezierPath(ovalIn: bounds.insetBy(dx: 1.5, dy: 1.5))
+            colAmber.setStroke(); ring2.lineWidth = 2; ring2.stroke()
             return
         }
         let ring = NSBezierPath(ovalIn: bounds.insetBy(dx: 1.5, dy: 1.5))
@@ -200,6 +201,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var userItem: NSMenuItem!
     var leaderboardPanel: NSWindow?
     var settingsPanel: NSWindow?
+    var pixelCanvas: PixelCanvasView?
+    var savedPixels: [[Bool]] = Array(repeating: Array(repeating: false, count: 16), count: 16)
+    var createButton: NSButton?
     var coins = 0 {
         didSet {
             updateHUD()
@@ -457,7 +461,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func setupAuth() {
         SupabaseAuth.shared.onChange = { [weak self] session in
             self?.updateAuthMenu()
-            if session != nil { self?.syncFromServer() }
+            if session != nil { self?.syncFromServer(); self?.submitPending() }
         }
         updateAuthMenu()
         if SupabaseAuth.shared.isLoggedIn { syncFromServer() }
@@ -486,13 +490,53 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     func endSession() {
-        guard SupabaseAuth.shared.isLoggedIn,
-              let start = sessionStart, sessionCoins > 0 else { sessionStart = nil; return }
+        guard let start = sessionStart, sessionCoins > 0 else { sessionStart = nil; return }
         let end = Date()
         let clicks = sessionClicks
         sessionStart = nil; sessionClicks = []
-        SupabaseAPI.shared.submitCoins(start: start, end: end, earned: sessionCoins, clicks: clicks) { [weak self] ok in
-            if ok { self?.syncFromServer() }
+
+        if SupabaseAuth.shared.isLoggedIn {
+            SupabaseAPI.shared.submitCoins(start: start, end: end, earned: sessionCoins, clicks: clicks) { [weak self] ok in
+                if ok { self?.syncFromServer() }
+            }
+            submitPending()
+        } else {
+            savePending(start: start, end: end, earned: sessionCoins, clicks: clicks)
+        }
+        sessionCoins = 0
+    }
+
+    // MARK: - 未登录时的本地存档
+
+    struct PendingSession: Codable {
+        let start: Double; let end: Double; let earned: Int; let clicks: [Double]
+    }
+
+    func savePending(start: Date, end: Date, earned: Int, clicks: [Double]) {
+        var list = loadPending()
+        list.append(PendingSession(start: start.timeIntervalSince1970,
+                                   end: end.timeIntervalSince1970,
+                                   earned: earned, clicks: clicks))
+        if let data = try? JSONEncoder().encode(list) {
+            try? data.write(to: URL(fileURLWithPath: pendingFile))
+        }
+    }
+
+    func loadPending() -> [PendingSession] {
+        guard let data = try? Data(contentsOf: URL(fileURLWithPath: pendingFile)),
+              let list = try? JSONDecoder().decode([PendingSession].self, from: data) else { return [] }
+        return list
+    }
+
+    func submitPending() {
+        let list = loadPending()
+        guard !list.isEmpty else { return }
+        try? FileManager.default.removeItem(atPath: pendingFile)
+        for s in list {
+            SupabaseAPI.shared.submitCoins(
+                start: Date(timeIntervalSince1970: s.start),
+                end:   Date(timeIntervalSince1970: s.end),
+                earned: s.earned, clicks: s.clicks) { _ in }
         }
     }
 
@@ -519,6 +563,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         tv.frame = NSRect(x: 20, y: 20, width: w - 40, height: h - 50)
         tv.autoresizingMask = [.width, .height]
         win.contentView?.addSubview(tv)
+        NSApp.activate(ignoringOtherApps: true)
         win.makeKeyAndOrderFront(nil)
 
         SupabaseAPI.shared.fetchLeaderboard { [weak self] entries in
@@ -539,88 +584,116 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
     }
 
-    // MARK: - Settings
+    // MARK: - Settings（像素画编辑器）
 
     @objc func openSettings() {
         settingsPanel?.close()
-        let w = 300, h = 220
+        let w: CGFloat = 360, h: CGFloat = 460
         let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: w, height: h),
                            styleMask: [.titled, .closable], backing: .buffered, defer: false)
-        win.title = "settings"
+        win.title = "$ pixel editor"
         win.appearance = NSAppearance(named: .darkAqua)
         win.backgroundColor = colBg
         win.center()
         settingsPanel = win
 
-        func label(_ s: String, x: CGFloat, y: CGFloat) -> NSTextField {
-            let f = NSTextField(labelWithString: s)
-            f.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
-            f.textColor = colDim
-            f.frame = NSRect(x: x, y: y, width: 100, height: 20)
-            return f
-        }
+        // coin name 一行
+        let nameLabel = NSTextField(labelWithString: "coin name")
+        nameLabel.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+        nameLabel.textColor = colDim
+        nameLabel.frame = NSRect(x: 20, y: h - 48, width: 90, height: 20)
+        win.contentView?.addSubview(nameLabel)
 
-        // coin name
-        win.contentView?.addSubview(label("coin name", x: 20, y: 160))
-        let nameField = NSTextField(frame: NSRect(x: 120, y: 158, width: 150, height: 22))
+        let nameField = NSTextField(frame: NSRect(x: 118, y: h - 50, width: 200, height: 22))
         nameField.stringValue = coinLabel
         nameField.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
-        nameField.appearance = NSAppearance(named: .darkAqua)
+        nameField.tag = 9001
         win.contentView?.addSubview(nameField)
 
-        // coin image
-        win.contentView?.addSubview(label("coin image", x: 20, y: 120))
-        let imgBtn = NSButton(title: "upload…", target: self, action: #selector(pickCoinImage))
-        imgBtn.frame = NSRect(x: 120, y: 118, width: 100, height: 22)
-        imgBtn.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
-        win.contentView?.addSubview(imgBtn)
+        // 像素画布（288×288，居中）
+        let canvasSize: CGFloat = 288
+        let canvasX = (w - canvasSize) / 2
+        let canvasY: CGFloat = 80
+        let canvas = PixelCanvasView(frame: NSRect(x: canvasX, y: canvasY,
+                                                   width: canvasSize, height: canvasSize))
+        canvas.onChange = { [weak self] in self?.refreshCreateButton() }
+        win.contentView?.addSubview(canvas)
+        pixelCanvas = canvas
+        savedPixels = canvas.pixels.map { $0 }   // 记录打开时的状态，供重置
 
-        // save
-        let saveBtn = NSButton(frame: NSRect(x: 110, y: 30, width: 80, height: 28))
-        saveBtn.title = "save"
-        saveBtn.bezelStyle = .rounded
-        saveBtn.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
-        saveBtn.target = self
-        saveBtn.action = #selector(saveSettings)
-        win.contentView?.addSubview(saveBtn)
+        // 三个按钮（等宽，底部对齐）
+        let btnW: CGFloat = 90, btnH: CGFloat = 28, btnY: CGFloat = 30
+        let spacing: CGFloat = (w - btnW * 3) / 4
 
-        // stash reference for save handler
-        win.contentView?.viewWithTag(9001)?.removeFromSuperview()
-        nameField.tag = 9001
+        let resetBtn = makeBtn("重置", x: spacing, y: btnY, w: btnW, h: btnH,
+                               action: #selector(resetCanvas))
+        win.contentView?.addSubview(resetBtn)
+
+        let clearBtn = makeBtn("清空", x: spacing * 2 + btnW, y: btnY, w: btnW, h: btnH,
+                               action: #selector(clearCanvas))
+        win.contentView?.addSubview(clearBtn)
+
+        let createBtn = makeBtn("创建", x: spacing * 3 + btnW * 2, y: btnY, w: btnW, h: btnH,
+                                action: #selector(createCoinArt))
+        createBtn.tag = 9002
+        win.contentView?.addSubview(createBtn)
+        createButton = createBtn
+
+        refreshCreateButton()
+        NSApp.activate(ignoringOtherApps: true)
         win.makeKeyAndOrderFront(nil)
     }
 
-    @objc func pickCoinImage() {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.png, .jpeg, .gif, .heic]
-        panel.canChooseFiles = true; panel.canChooseDirectories = false
-        panel.begin { [weak self] resp in
-            guard let self, resp == .OK, let url = panel.url,
-                  let img = NSImage(contentsOf: url) else { return }
-            let size: CGFloat = 88
-            let cropped = NSImage(size: NSSize(width: size, height: size))
-            cropped.lockFocus()
-            NSBezierPath(ovalIn: NSRect(x: 0, y: 0, width: size, height: size)).addClip()
-            img.draw(in: NSRect(x: 0, y: 0, width: size, height: size))
-            cropped.unlockFocus()
-            guard let tiff = cropped.tiffRepresentation,
-                  let bmp = NSBitmapImageRep(data: tiff),
-                  let png = bmp.representation(using: .png, properties: [:]) else { return }
-            SupabaseAPI.shared.uploadCoinImage(png) { [weak self] urlStr in
-                guard let self, urlStr != nil else { return }
-                self.customCoinImage = cropped
-            }
-        }
+    private func makeBtn(_ title: String, x: CGFloat, y: CGFloat, w: CGFloat, h: CGFloat,
+                         action: Selector) -> NSButton {
+        let btn = NSButton(frame: NSRect(x: x, y: y, width: w, height: h))
+        btn.title = title
+        btn.bezelStyle = .rounded
+        btn.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+        btn.target = self
+        btn.action = action
+        return btn
     }
 
-    @objc func saveSettings() {
-        guard let field = settingsPanel?.contentView?.viewWithTag(9001) as? NSTextField else { return }
-        let newName = field.stringValue.trimmingCharacters(in: .whitespaces)
-        if !newName.isEmpty && newName != coinLabel {
-            coinLabel = newName
-            updateHUD()
-            SupabaseAPI.shared.updateProfile(coinName: newName)
+    private func refreshCreateButton() {
+        createButton?.isEnabled = (pixelCanvas?.pixelCount ?? 0) > 0
+    }
+
+    @objc func resetCanvas() {
+        pixelCanvas?.restore(savedPixels)
+        refreshCreateButton()
+    }
+
+    @objc func clearCanvas() {
+        pixelCanvas?.clear()
+        refreshCreateButton()
+    }
+
+    @objc func createCoinArt() {
+        guard let canvas = pixelCanvas, canvas.pixelCount > 0 else { return }
+        canvas.savePixels()
+        savedPixels = canvas.pixels.map { $0 }
+        let img = canvas.renderToImage()
+        customCoinImage = img
+
+        // 上传到 Supabase（如果已登录）
+        if SupabaseAuth.shared.isLoggedIn,
+           let tiff = img.tiffRepresentation,
+           let bmp = NSBitmapImageRep(data: tiff),
+           let png = bmp.representation(using: .png, properties: [:]) {
+            SupabaseAPI.shared.uploadCoinImage(png) { _ in }
         }
+
+        // 更新 coin name
+        if let field = settingsPanel?.contentView?.viewWithTag(9001) as? NSTextField {
+            let newName = field.stringValue.trimmingCharacters(in: .whitespaces)
+            if !newName.isEmpty && newName != coinLabel {
+                coinLabel = newName
+                updateHUD()
+                SupabaseAPI.shared.updateProfile(coinName: newName)
+            }
+        }
+
         settingsPanel?.close()
     }
 }
