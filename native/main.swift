@@ -105,8 +105,9 @@ final class HUDTextView: NSView {
     }
 }
 
-// 左上角关闭按钮：点击退出应用（与菜单栏 exit 等效）
+// 左上角关闭按钮：点击只收起悬浮窗，应用留在菜单栏，可从菜单重新打开
 final class CloseView: NSView {
+    var onClose: (() -> Void)?
     override var allowsVibrancy: Bool { return false }
     override func draw(_ dirtyRect: NSRect) {
         let s = NSAttributedString(string: "✕", attributes: [
@@ -117,7 +118,7 @@ final class CloseView: NSView {
         s.draw(at: NSPoint(x: (bounds.width - size.width) / 2,
                            y: (bounds.height - size.height) / 2))
     }
-    override func mouseDown(with event: NSEvent) { NSApp.terminate(nil) }
+    override func mouseDown(with event: NSEvent) { onClose?() }
 }
 
 // 不抢焦点的悬浮面板：点金币不会让终端失去输入焦点
@@ -171,6 +172,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var grip: GripView!
     var coinsItem: NSMenuItem!
     var testItem: NSMenuItem!
+    var windowItem: NSMenuItem!
     var coinViews: [CoinView] = []
     var working = false
     var testMode = false
@@ -242,6 +244,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         let close = CloseView(frame: NSRect(x: 8, y: h - 28, width: 20, height: 20))
         close.autoresizingMask = [.maxXMargin, .minYMargin]   // 始终贴在左上角
+        close.onClose = { [weak self] in self?.setWindowShown(false) }
         panel.contentView?.addSubview(close)
 
         grip = GripView(frame: NSRect(x: w - 18, y: 0, width: 18, height: 18))
@@ -260,6 +263,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         testItem = NSMenuItem(title: "test --start", action: #selector(toggleTest), keyEquivalent: "t")
         testItem.target = self
         menu.addItem(testItem)
+        windowItem = NSMenuItem(title: "window --hide", action: #selector(toggleWindow), keyEquivalent: "w")
+        windowItem.target = self
+        menu.addItem(windowItem)
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "exit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         statusItem.menu = menu
@@ -307,7 +313,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         })
         // 掉币
         timers.append(Timer.scheduledTimer(withTimeInterval: spawnInterval, repeats: true) { [weak self] _ in
-            guard let self = self, self.working else { return }
+            guard let self = self, self.working, self.panel.isVisible else { return }
             self.spawn()
         })
         // 下落动画
@@ -382,6 +388,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let loc = NSEvent.mouseLocation
         panel.ignoresMouseEvents = !(panel.frame.contains(loc) || grip.dragging)
     }
+
+    // 收起/恢复悬浮窗：收起时应用留在菜单栏，掉币暂停
+    func setWindowShown(_ shown: Bool) {
+        if shown { panel.orderFrontRegardless() } else { panel.orderOut(nil) }
+        windowItem.title = shown ? "window --hide" : "window --show"
+    }
+
+    @objc func toggleWindow() { setWindowShown(!panel.isVisible) }
 
     @objc func toggleTest() {
         testMode = !testMode
