@@ -1,6 +1,7 @@
 // Coin Coding 原生版：macOS 菜单栏应用 + 置顶透明悬浮窗
 // 编译：swiftc -O native/main.swift -o native/CoinCoding
 import AppKit
+import AVFoundation
 
 let stateDir = NSString(string: "~/.coincoding").expandingTildeInPath
 let stateFile = stateDir + "/state.txt"
@@ -52,6 +53,36 @@ final class CoinView: NSView {
     }
 
     override func mouseDown(with event: NSEvent) { onCollect?(self) }
+}
+
+// 8-bit 风格蜂鸣器（与 demo 的 WebAudio beep 等价：方波/正弦 + 指数衰减）
+final class Beeper {
+    private let engine = AVAudioEngine()
+    private let player = AVAudioPlayerNode()
+    private let format = AVAudioFormat(standardFormatWithSampleRate: 44100, channels: 1)!
+
+    init() {
+        engine.attach(player)
+        engine.connect(player, to: engine.mainMixerNode, format: format)
+        try? engine.start()
+        if engine.isRunning { player.play() }
+    }
+
+    func beep(freq: Double, vol: Float, dur: Double, sine: Bool = false) {
+        guard engine.isRunning else { return }
+        let sr = format.sampleRate
+        let frames = AVAudioFrameCount(sr * dur)
+        guard let buf = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames) else { return }
+        buf.frameLength = frames
+        let data = buf.floatChannelData![0]
+        for i in 0..<Int(frames) {
+            let t = Double(i) / sr
+            let phase = sin(2 * .pi * freq * t)
+            let wave = sine ? phase : (phase >= 0 ? 1.0 : -1.0)
+            data[i] = Float(wave * pow(0.001, t / dur)) * vol
+        }
+        player.scheduleBuffer(buf)
+    }
 }
 
 // 不抢焦点的悬浮面板：点金币不会让终端失去输入焦点
@@ -108,6 +139,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var working = false
     var testMode = false
     var timers: [Timer] = []
+    let beeper = Beeper()
+    var streak = 0
+    let penta = [0, 2, 4, 7, 9]   // 连击沿五声音阶上行（与 demo 一致）
     var coins = 0 {
         didSet {
             updateHUD()
@@ -137,8 +171,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         panel.backgroundColor = .clear
         panel.isOpaque = false
         panel.hasShadow = false
-        panel.ignoresMouseEvents = true                 // 默认整窗穿透，仅悬停金币/计数时接收点击
-        panel.isMovableByWindowBackground = true        // 拖计数标签可移动窗口
+        panel.ignoresMouseEvents = true                 // 鼠标在框外时不挡事，进框后接收（见 updateClickThrough）
+        panel.isMovableByWindowBackground = true        // 框内任意位置按住可拖动窗口（用户拍板放弃点击穿透）
         panel.setFrameAutosaveName("CoinCodingPanel")   // 记住用户挪过的位置
 
         // 细描边标出窗口边界（终端窗格风格）
@@ -146,10 +180,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         panel.contentView?.layer?.borderWidth = 1
         panel.contentView?.layer?.borderColor = colDim.withAlphaComponent(0.6).cgColor
         panel.contentView?.layer?.cornerRadius = 6
+        // 近乎透明的底色：肉眼不可见，但让透明区域能接住鼠标（否则系统会让点击落到下层窗口）
+        panel.contentView?.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.01).cgColor
 
         hud = NSTextField(labelWithString: "")
-        hud.alignment = .center
-        hud.frame = NSRect(x: w - 130, y: h - 38, width: 120, height: 26)
+        hud.alignment = .right
+        hud.frame = NSRect(x: w - 170, y: h - 38, width: 158, height: 26)
         hud.autoresizingMask = [.minXMargin, .minYMargin]   // 改大小时保持在右上角
         panel.contentView?.addSubview(hud)
 
@@ -194,7 +230,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             guard let self = self else { return }
             let s = (try? String(contentsOfFile: stateFile, encoding: .utf8))?
                 .trimmingCharacters(in: .whitespacesAndNewlines) ?? "idle"
-            self.working = self.testMode || s == "working"
+            let now = self.testMode || s == "working"
+            if self.working && !now { self.streak = 0 }   // 收工时连击清零
+            self.working = now
         })
         // 掉币
         timers.append(Timer.scheduledTimer(withTimeInterval: spawnInterval, repeats: true) { [weak self] _ in
@@ -232,8 +270,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             coin.setFrameOrigin(NSPoint(x: coin.frame.origin.x, y: coin.frame.origin.y - speed * dt))
         }
         coinViews.removeAll { coin in
-            if coin.frame.maxY < 0 {        // 漏接：直接消失，无惩罚
+            if coin.frame.maxY < 0 {        // 漏接：无惩罚，但连击清零并低音提示
                 coin.removeFromSuperview()
+                if streak >= 2 { beeper.beep(freq: 150, vol: 0.05, dur: 0.18, sine: true) }
+                streak = 0
                 return true
             }
             return false
@@ -242,6 +282,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     func collect(_ coin: CoinView) {
         coins += coin.value
+        streak += 1
+        let i = min(streak, 20)
+        let semis = (i / 5) * 12 + penta[i % 5]
+        beeper.beep(freq: 523 * pow(2, Double(semis) / 12), vol: 0.04, dur: 0.1)
         coin.removeFromSuperview()
         coinViews.removeAll { $0 === coin }
     }
@@ -258,17 +302,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     func updateClickThrough() {
+        // 框内整体接收鼠标（点金币/拖动/改大小），框外不挡事
         let loc = NSEvent.mouseLocation
-        var interactive = false
-        if panel.frame.contains(loc) {
-            let p = NSPoint(x: loc.x - panel.frame.origin.x, y: loc.y - panel.frame.origin.y)
-            if hud.frame.contains(p) || grip.frame.contains(p) || grip.dragging {
-                interactive = true
-            } else {
-                for c in coinViews where c.frame.contains(p) { interactive = true; break }
-            }
-        }
-        panel.ignoresMouseEvents = !interactive
+        panel.ignoresMouseEvents = !(panel.frame.contains(loc) || grip.dragging)
     }
 
     @objc func toggleTest() {
