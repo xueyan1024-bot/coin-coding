@@ -8,7 +8,7 @@ let stateFile = stateDir + "/state.txt"
 let coinsFile = stateDir + "/coins.txt"
 
 // 数值（与 PRD V1.1 一致；正式版改为服务端下发）
-let spawnInterval: TimeInterval = 1.5
+let spawnInterval: TimeInterval = 0.8
 let fallSeconds: CGFloat = 6.0
 let bigChance: Double = 0.05
 
@@ -93,6 +93,21 @@ final class HUDTextView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         text.draw(at: NSPoint(x: 1, y: (bounds.height - text.size().height) / 2))
     }
+}
+
+// 左上角关闭按钮：点击退出应用（与菜单栏 exit 等效）
+final class CloseView: NSView {
+    override var allowsVibrancy: Bool { return false }
+    override func draw(_ dirtyRect: NSRect) {
+        let s = NSAttributedString(string: "✕", attributes: [
+            .font: NSFont.monospacedSystemFont(ofSize: 12, weight: .regular),
+            .foregroundColor: colDim,
+        ])
+        let size = s.size()
+        s.draw(at: NSPoint(x: (bounds.width - size.width) / 2,
+                           y: (bounds.height - size.height) / 2))
+    }
+    override func mouseDown(with event: NSEvent) { NSApp.terminate(nil) }
 }
 
 // 不抢焦点的悬浮面板：点金币不会让终端失去输入焦点
@@ -214,6 +229,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         // 自绘文字层叠在毛玻璃上方（金币视图同款画法，不受系统洗色影响）
         hud = HUDTextView(frame: .zero)
         panel.contentView?.addSubview(hud)
+
+        let close = CloseView(frame: NSRect(x: 8, y: h - 28, width: 20, height: 20))
+        close.autoresizingMask = [.maxXMargin, .minYMargin]   // 始终贴在左上角
+        panel.contentView?.addSubview(close)
 
         grip = GripView(frame: NSRect(x: w - 18, y: 0, width: 18, height: 18))
         grip.panelRef = panel
