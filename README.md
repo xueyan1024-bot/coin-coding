@@ -36,7 +36,7 @@ Coin Coding hooks into Claude Code's activity via Claude Code Hooks.
 - Real-time sync with Claude Code working state
 - Minimal coin-catching game
 - GitHub login + global leaderboard
-- Transparent floating window — drag anywhere, resize freely
+- Transparent floating window — drag anywhere, resize the window freely
 - Custom coin art (Coinface) and click sound presets
 - Zero configuration after install, launches at login
 
@@ -104,7 +104,7 @@ Coin Coding 通过 Claude Code Hooks 感知 Agent 的工作状态。
 - 实时感知 Claude Code 工作状态
 - 极简集金币小游戏
 - GitHub 登录与全球排行榜
-- 透明背景，随意拖动，自由调整大小
+- 透明背景，随意拖动，随意更改窗口大小
 - 自定义金币图案（Coinface）和点击音效
 - 安装后几乎无需配置，开机自动启动
 
