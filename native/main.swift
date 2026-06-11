@@ -201,7 +201,7 @@ final class GripView: NSView {
     override func mouseUp(with event: NSEvent) { dragging = false }
 }
 
-final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFieldDelegate {
     var statusItem: NSStatusItem!
     var panel: GamePanel!
     var hud: HUDTextView!
@@ -232,6 +232,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var settingsPanel: NSWindow?
     var pixelCanvas: PixelCanvasView?
     var savedPixels: [[Bool]] = Array(repeating: Array(repeating: false, count: 16), count: 16)
+    var savedShowingDefault = false
     var createButton: NSButton?
     var coins = 0 {
         didSet {
@@ -534,6 +535,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             guard let self, let profile else { return }
             self.coins     = profile.totalCoins
             self.coinLabel = profile.coinName
+            self.updateHUD()
             if let urlStr = profile.coinImageUrl, let url = URL(string: urlStr) {
                 URLSession.shared.dataTask(with: url) { data, _, _ in
                     guard let data, let img = NSImage(data: data) else { return }
@@ -681,6 +683,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         nameField.stringValue = coinLabel
         nameField.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
         nameField.tag = 9001
+        nameField.delegate = self
         win.contentView?.addSubview(nameField)
 
         // 像素画布（288×288，居中）
@@ -692,7 +695,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         canvas.onChange = { [weak self] in self?.refreshCreateButton() }
         win.contentView?.addSubview(canvas)
         pixelCanvas = canvas
-        savedPixels = canvas.pixels.map { $0 }   // 记录打开时的状态，供重置
+        // 如果本地没有自定义像素，显示默认 $ 作为当前状态
+        if canvas.pixelCount == 0 { canvas.showDefault() }
+        savedPixels = canvas.pixels.map { $0 }
+        savedShowingDefault = canvas.showingDefault
 
         // 三个按钮（等宽，底部对齐）
         let btnW: CGFloat = 90, btnH: CGFloat = 28, btnY: CGFloat = 30
@@ -729,7 +735,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func refreshCreateButton() {
         guard let canvas = pixelCanvas else { createButton?.isEnabled = false; return }
-        createButton?.isEnabled = canvas.pixelCount > 0 || canvas.showingDefault
+        let nameChanged = (settingsPanel?.contentView?.viewWithTag(9001) as? NSTextField)
+            .map { !$0.stringValue.trimmingCharacters(in: .whitespaces).isEmpty && $0.stringValue != coinLabel } ?? false
+        let canvasChanged = canvas.showingDefault != savedShowingDefault || canvas.pixels.elementsEqual(savedPixels, by: { $0 == $1 }) == false
+        createButton?.isEnabled = canvasChanged || nameChanged
+    }
+
+    func controlTextDidChange(_ obj: Notification) {
+        if (obj.object as? NSTextField)?.tag == 9001 { refreshCreateButton() }
     }
 
     @objc func resetCanvas() {
