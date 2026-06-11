@@ -208,11 +208,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
     var hudBox: NSVisualEffectView!   // 计数文字的毛玻璃底，浅色桌面下保证可读
     var grip: GripView!
     var coinsItem: NSMenuItem!
-    var testItem: NSMenuItem!
+
     var windowItem: NSMenuItem!
     var coinViews: [CoinView] = []
     var working = false
-    var testMode = false
+
     var timers: [Timer] = []
     let beeper = Beeper()
     var streak = 0
@@ -346,9 +346,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
         windowItem = NSMenuItem(title: "window --hide", action: #selector(toggleWindow), keyEquivalent: "w")
         windowItem.target = self
         menu.addItem(windowItem)
-        testItem = NSMenuItem(title: "test --start", action: #selector(toggleTest), keyEquivalent: "t")
-        testItem.target = self
-        menu.addItem(testItem)
 
         // —— 账号 ——
         menu.addItem(.separator())
@@ -402,7 +399,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
             guard let self = self else { return }
             let s = (try? String(contentsOfFile: stateFile, encoding: .utf8))?
                 .trimmingCharacters(in: .whitespacesAndNewlines) ?? "idle"
-            let now = self.testMode || s == "working"
+            let now = s == "working"
             if !self.working && now {   // 开始工作
                 self.sessionStart = Date(); self.sessionClicks = []; self.sessionCoins = 0
             }
@@ -506,10 +503,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
         if s != .off { beeper.beep(freq: 659, vol: 0.04, dur: 0.1) }   // 试听一声
     }
 
-    @objc func toggleTest() {
-        testMode = !testMode
-        testItem.title = testMode ? "test --stop" : "test --start"
-    }
 
     // MARK: - Auth
 
