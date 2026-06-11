@@ -12,7 +12,7 @@ You kicked off a task in Claude Code and walked away. Or maybe you're in another
 
 It's a small game. But it also keeps you loosely aware of what's happening — coins are falling means the agent is still working. Coins stopped means it's done (or waiting on you).
 
-![screenshot placeholder]
+![demo](assets/demo.gif)
 
 ### A note on awareness
 
@@ -69,7 +69,7 @@ Then remove the hooks block from `~/.claude/settings.json`.
 
 是个小游戏。但它也让你对 Agent 的状态保持一种轻度感知——金币在掉，说明 Agent 还在跑；金币停了，说明跑完了（或者在等你）。
 
-![截图占位]
+![demo](assets/demo.gif)
 
 ### 关于状态感知的说明
 
