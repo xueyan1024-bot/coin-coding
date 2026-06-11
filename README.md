@@ -2,6 +2,8 @@
 
 **English** | [中文](#中文)
 
+![banner](assets/banner_en.png)
+
 ---
 
 ## What are you doing while Claude Code is working?
@@ -71,6 +73,8 @@ Then remove the hooks block from `~/.claude/settings.json`.
 ---
 
 # 中文
+
+![banner](assets/banner_zh.png)
 
 ## 当 Claude Code 工作的时候你在做什么？
 
