@@ -185,8 +185,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         hud = NSTextField(labelWithString: "")
         hud.alignment = .right
-        hud.frame = NSRect(x: w - 170, y: h - 38, width: 158, height: 26)
-        hud.autoresizingMask = [.minXMargin, .minYMargin]   // 改大小时保持在右上角
+        hud.lineBreakMode = .byClipping
+        hud.frame = NSRect(x: 12, y: h - 38, width: w - 24, height: 26)
+        hud.autoresizingMask = [.width, .minYMargin]   // 宽度跟随窗口，贴右上角
         panel.contentView?.addSubview(hud)
 
         grip = GripView(frame: NSRect(x: w - 18, y: 0, width: 18, height: 18))
@@ -211,13 +212,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     func updateHUD() {
-        // 命令行样式：coins = N（N 为琥珀色）
+        // 命令行样式：coins = N（N 为琥珀色）；对齐必须写进富文本，控件的 alignment 对富文本无效
         let mono = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
-        let s = NSMutableAttributedString(string: "coins = ",
-            attributes: [.font: mono, .foregroundColor: colBright])
+        let right = NSMutableParagraphStyle()
+        right.alignment = .right
+        // 窗口很窄且数字很大时，自动从 coins = N 降级为 $ N
+        let narrow = hud.map {
+            NSAttributedString(string: "coins = \(coins)", attributes: [.font: mono]).size().width
+                > $0.frame.width
+        } ?? false
+        let s = NSMutableAttributedString(string: narrow ? "$ " : "coins = ",
+            attributes: [.font: mono, .foregroundColor: colBright, .paragraphStyle: right])
         s.append(NSAttributedString(string: "\(coins)",
             attributes: [.font: NSFont.monospacedSystemFont(ofSize: 13, weight: .semibold),
-                         .foregroundColor: colAmber]))
+                         .foregroundColor: colAmber, .paragraphStyle: right]))
         hud?.attributedStringValue = s
         statusItem?.button?.title = "$ \(coins)"
         statusItem?.button?.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
@@ -290,8 +298,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         coinViews.removeAll { $0 === coin }
     }
 
-    // 窗口缩小后把跑到界外的金币拉回视野内（与 demo 行为一致）
+    // 窗口缩小后把跑到界外的金币拉回视野内（与 demo 行为一致），并按新宽度刷新计数样式
     func windowDidResize(_ notification: Notification) {
+        updateHUD()
         guard let content = panel.contentView else { return }
         for coin in coinViews {
             let maxX = content.bounds.width - coin.frame.width
