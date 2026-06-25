@@ -34,6 +34,27 @@ Supports **Claude Code** and **Trae**.
 
 ---
 
+## Usage
+
+After install, a `$` icon appears in your menu bar. Click it to open the menu.
+
+**Floating window** — click `window --show` in the menu to open the game window. Coins fall from the top while your agent is working. Click them to collect.
+
+- Drag the window by clicking anywhere inside it
+- Resize it by dragging the textured grip in the bottom-right corner
+- The window stays on top of full-screen apps
+
+**Menu options**
+
+- `coins = N` — your total coin count
+- `Leaderboard` — coming soon
+- `Coinface` — customize the coin with a pixel art editor
+- `Sound` — choose a click sound: beep, bubble, ding, or off
+- `window --show / --hide` — toggle the floating window
+- `Exit` — quit the app
+
+---
+
 ## Install
 
 Requires **macOS**. Windows is not supported.
@@ -120,6 +141,27 @@ token 在跑，金币在爆，祝您发财！🪙
 - 透明背景，随意拖动，随意更改窗口大小
 - 自定义金币图案（Coinface）和点击音效
 - 全球排行榜 — 即将上线
+
+---
+
+## 使用方式
+
+安装完成后，菜单栏出现 `$` 图标，点击打开菜单。
+
+**悬浮窗口** — 在菜单中点击 `window --show` 打开游戏窗口。Agent 工作时金币从顶部持续落下，点击收集。
+
+- 在窗口内任意位置按住拖动，移动窗口位置
+- 拖动右下角的斜纹把手，调整窗口大小
+- 窗口自动置顶于全屏应用之上
+
+**菜单说明**
+
+- `coins = N` — 当前累计金币数
+- `Leaderboard` — 排行榜（即将上线）
+- `Coinface` — 像素画编辑器，自定义金币图案
+- `Sound` — 选择点击音效：beep、bubble、ding 或关闭
+- `window --show / --hide` — 显示或隐藏悬浮窗口
+- `Exit` — 退出应用
 
 ---
 
