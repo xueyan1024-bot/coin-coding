@@ -205,7 +205,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
     var statusItem: NSStatusItem!
     var panel: GamePanel!
     var hud: HUDTextView!
-    var hudBox: NSVisualEffectView!   // 计数文字的毛玻璃底，浅色桌面下保证可读
+    var hudBox: NSVisualEffectView!
+    var leaderboardBtn: NSButton!
     var grip: GripView!
     var coinsItem: NSMenuItem!
 
@@ -249,7 +250,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
         setupPanel()
         setupStatusItem()
         startTimers()
-        setupAuth()
         loadSavedCoinImage()
         updateHUD()
     }
@@ -297,6 +297,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
         // 自绘文字层叠在毛玻璃上方（金币视图同款画法，不受系统洗色影响）
         hud = HUDTextView(frame: .zero)
         panel.contentView?.addSubview(hud)
+
+        // 排行榜图标（hudBox 左侧）
+        leaderboardBtn = NSButton(frame: NSRect(x: 0, y: 0, width: 24, height: 24))
+        leaderboardBtn.bezelStyle = .regularSquare
+        leaderboardBtn.isBordered = false
+        leaderboardBtn.image = NSImage(systemSymbolName: "trophy", accessibilityDescription: nil)
+        leaderboardBtn.contentTintColor = colDim
+        leaderboardBtn.target = self
+        leaderboardBtn.action = #selector(leaderboardIconTapped)
+        panel.contentView?.addSubview(leaderboardBtn)
 
         let close = CloseView(frame: NSRect(x: 8, y: h - 28, width: 20, height: 20))
         close.autoresizingMask = [.maxXMargin, .minYMargin]   // 始终贴在左上角
@@ -347,16 +357,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
         windowItem.target = self
         menu.addItem(windowItem)
 
-        // —— 账号 ——
-        menu.addItem(.separator())
+        // —— 账号（暂隐藏，后端未就绪）——
         userItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
-        menu.addItem(userItem)
         loginItem = NSMenuItem(title: "Login with GitHub", action: #selector(doLogin), keyEquivalent: "")
         loginItem.target = self
-        menu.addItem(loginItem)
         logoutItem = NSMenuItem(title: "Logout", action: #selector(doLogout), keyEquivalent: "")
         logoutItem.target = self
-        menu.addItem(logoutItem)
 
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Exit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
@@ -384,9 +390,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
             let boxH = ceil(textSize.height) + pad * 2
             box.frame = NSRect(x: content.bounds.width - boxW - 12,
                                y: content.bounds.height - boxH - 12, width: boxW, height: boxH)
-            // 文字层与毛玻璃同框叠放（文字在视图内自行垂直居中、左侧从 pad 起笔）
             hud.frame = NSRect(x: box.frame.origin.x + pad, y: box.frame.origin.y,
                                width: boxW - pad * 2 + 2, height: boxH)
+            let btnSize: CGFloat = 22
+            leaderboardBtn?.frame = NSRect(x: box.frame.minX - btnSize - 4,
+                                           y: box.frame.midY - btnSize / 2,
+                                           width: btnSize, height: btnSize)
         }
         statusItem?.button?.title = "$ \(coins)"
         statusItem?.button?.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
@@ -495,6 +504,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
 
     @objc func toggleWindow() { setWindowShown(!panel.isVisible) }
 
+    // 未登录时弹提示
+    @discardableResult
+    func requireLogin() -> Bool {
+        guard !SupabaseAuth.shared.isLoggedIn else { return true }
+        let alert = NSAlert()
+        alert.messageText = "Login required"
+        alert.informativeText = "Sign in with GitHub to use this feature."
+        alert.addButton(withTitle: "Login with GitHub")
+        alert.addButton(withTitle: "Cancel")
+        if alert.runModal() == .alertFirstButtonReturn { SupabaseAuth.shared.login() }
+        return false
+    }
+
+    @objc func leaderboardIconTapped() { openLeaderboard() }
+
     @objc func selectSound(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String,
               let s = Beeper.Style(rawValue: raw) else { return }
@@ -539,19 +563,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
     }
 
     func endSession() {
-        guard let start = sessionStart, sessionCoins > 0 else { sessionStart = nil; return }
-        let end = Date()
-        let clicks = sessionClicks
+        guard sessionCoins > 0 else { sessionStart = nil; return }
         sessionStart = nil; sessionClicks = []
-
-        if SupabaseAuth.shared.isLoggedIn {
-            SupabaseAPI.shared.submitCoins(start: start, end: end, earned: sessionCoins, clicks: clicks) { [weak self] ok in
-                if ok { self?.syncFromServer() }
-            }
-            submitPending()
-        } else {
-            savePending(start: start, end: end, earned: sessionCoins, clicks: clicks)
-        }
         sessionCoins = 0
     }
 
@@ -607,41 +620,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
         win.center()
         leaderboardPanel = win
 
-        let tv = NSTextField(wrappingLabelWithString: "loading…")
+        // 敬请期待空状态
+        let tv = NSTextField(wrappingLabelWithString: "")
         tv.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
         tv.textColor = colBright
         tv.backgroundColor = .clear
+        tv.alignment = .center
         tv.frame = NSRect(x: 20, y: 20, width: w - 40, height: h - 50)
         tv.autoresizingMask = [.width, .height]
         win.contentView?.addSubview(tv)
-        win.orderFrontRegardless()
 
-        SupabaseAPI.shared.fetchLeaderboard { [weak self] entries in
-            guard let self else { return }
-            let myName = SupabaseAuth.shared.session?.githubUsername ?? ""
-            var lines = ["  rank   user                    coins", String(repeating: "─", count: 38)]
-            for (i, e) in entries.enumerated() {
-                let rank  = String(format: "%4d", i + 1)
-                let user  = e.githubUsername.padding(toLength: 22, withPad: " ", startingAt: 0)
-                let score = "\(e.totalCoins)"
-                lines.append("  \(rank)   \(user)  \(score)")
-            }
-            if !myName.isEmpty && !entries.contains(where: { $0.githubUsername == myName }) {
-                // 不在前 20：另查自己的真实名次显示在底部
-                SupabaseAPI.shared.fetchMyRank { rank in
-                    lines.append(String(repeating: "─", count: 38))
-                    if let r = rank {
-                        let user = "you (@\(myName))".padding(toLength: 22, withPad: " ", startingAt: 0)
-                        lines.append("  \(String(format: "%4d", r))   \(user)  \(self.coins)")
-                    } else {
-                        lines.append("   →    you're not ranked yet")
-                    }
-                    tv.stringValue = lines.joined(separator: "\n")
-                }
-                return
-            }
-            tv.stringValue = lines.joined(separator: "\n")
-        }
+        let lines = [
+            "",
+            "",
+            "  ┌─────────────────────────────┐",
+            "  │                             │",
+            "  │       leaderboard           │",
+            "  │     coming soon...          │",
+            "  │                             │",
+            "  └─────────────────────────────┘",
+            "",
+            "  >排行榜功能正在开发中"
+        ]
+        tv.stringValue = lines.joined(separator: "\n")
+        win.orderFrontRegardless()
     }
 
     func loadSavedCoinImage() {
@@ -753,21 +755,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
         guard let canvas = pixelCanvas else { return }
 
         if canvas.showingDefault {
-            // 保存"恢复默认"：删本地图案、游戏恢复 $、服务端也清掉
             try? FileManager.default.removeItem(atPath: stateDir + "/pixels.json")
             customCoinImage = nil
-            SupabaseAPI.shared.updateProfile(coinImageUrl: "")
         } else if canvas.pixelCount > 0 {
             canvas.savePixels()
             let img = canvas.renderToImage()
             customCoinImage = img
-            // 上传到 Supabase（如果已登录）
-            if SupabaseAuth.shared.isLoggedIn,
-               let tiff = img.tiffRepresentation,
-               let bmp = NSBitmapImageRep(data: tiff),
-               let png = bmp.representation(using: .png, properties: [:]) {
-                SupabaseAPI.shared.uploadCoinImage(png) { _ in }
-            }
         } else { return }
 
         // 更新 coin name
@@ -776,7 +769,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTe
             if !newName.isEmpty && newName != coinLabel {
                 coinLabel = newName
                 updateHUD()
-                SupabaseAPI.shared.updateProfile(coinName: newName)
             }
         }
 
