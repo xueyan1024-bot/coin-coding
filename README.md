@@ -55,21 +55,18 @@ After install, look for the `$` icon in your menu bar. No further configuration 
 
 ### Trae
 
-**Step 1** — Install the app:
-
 ```bash
 curl -fsSL https://raw.githubusercontent.com/xueyan1024-bot/coin-coding/main/install.sh | bash
 ```
 
-This will download and install the app to `/Applications` and set it to launch at login.
+This will:
+- Download and install the app to `/Applications`
+- Write hooks into Trae's global config so the app knows when your agent is active
+- Set the app to launch at login
 
-**Step 2** — Enable in Trae settings:
+After install, go to Trae **Settings → Hooks**, find **已配置的 Hooks**, and make sure it is enabled and set to **本地自动运行 (Run locally)**.
 
-1. Open Trae **Settings → Hooks**
-2. Turn on **导入 CLAUDE 中的 Hooks 配置** (Import Claude hooks config)
-3. Make sure the run mode is set to **本地自动运行 (Run locally)**
-
-After that, look for the `$` icon in your menu bar. Send a message to your agent and watch coins fall.
+Then look for the `$` icon in your menu bar.
 
 ---
 
@@ -147,21 +144,18 @@ curl -fsSL https://raw.githubusercontent.com/xueyan1024-bot/coin-coding/main/ins
 
 ### Trae
 
-**第一步** — 安装 app：
-
 ```bash
 curl -fsSL https://raw.githubusercontent.com/xueyan1024-bot/coin-coding/main/install.sh | bash
 ```
 
-脚本会下载并安装 app 到 `/Applications`，并设置开机自启。
+安装脚本会自动完成：
+- 下载并安装 app 到 `/Applications`
+- 写入 Trae 全局 hooks 配置，让 app 感知 Agent 状态
+- 设置开机自启
 
-**第二步** — 在 Trae 里开启：
+安装完成后，进入 Trae **设置 → Hooks**，找到 **已配置的 Hooks**，确认已启用且运行方式为 **本地自动运行**。
 
-1. 打开 Trae **设置 → Hooks**
-2. 打开 **导入 CLAUDE 中的 Hooks 配置**
-3. 确认运行方式为 **本地自动运行**
-
-完成后菜单栏会出现 `$` 图标。向 Agent 发一条消息，金币就会开始掉落。
+之后菜单栏会出现 `$` 图标。
 
 ---
 

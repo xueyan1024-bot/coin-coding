@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "hooks": {
+    "UserPromptSubmit": [{
+      "hooks": [
+        {
+          "type": "command",
+          "command": "mkdir -p ~/.coincoding && echo working > ~/.coincoding/state.txt",
+          "timeout": 10
+        }
+      ]
+    }],
+    "Stop": [{
+      "hooks": [
+        {
+          "type": "command",
+          "command": "mkdir -p ~/.coincoding && echo idle > ~/.coincoding/state.txt",
+          "timeout": 10
+        }
+      ]
+    }]
+  }
+}

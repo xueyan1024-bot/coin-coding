@@ -61,7 +61,45 @@ open(path, "w").write(json.dumps(cfg, indent=2))
 print("    hooks written to", path)
 PYEOF
 
-# 3. 注册开机自启
+# 3. 写入 Trae 全局 hooks（兼容国内版和国际版）
+echo "==> configuring Trae hooks..."
+python3 - <<'PYEOF'
+import json, os
+
+HOOKS = {
+    "version": 1,
+    "hooks": {
+        "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "mkdir -p ~/.coincoding && echo working > ~/.coincoding/state.txt", "timeout": 10}]}],
+        "Stop":             [{"hooks": [{"type": "command", "command": "mkdir -p ~/.coincoding && echo idle > ~/.coincoding/state.txt",    "timeout": 10}]}]
+    }
+}
+
+for trae_dir in ["~/.trae-cn", "~/.trae"]:
+    path = os.path.expanduser(trae_dir)
+    hooks_file = os.path.join(path, "hooks.json")
+    if not os.path.isdir(path):
+        continue
+    cfg = {}
+    if os.path.exists(hooks_file):
+        try:
+            cfg = json.loads(open(hooks_file).read())
+        except Exception:
+            pass
+    # 已有 coincoding 配置则跳过
+    already = any(
+        "coincoding" in h.get("command", "")
+        for entries in cfg.get("hooks", {}).values()
+        for e in entries
+        for h in e.get("hooks", [])
+    )
+    if not already:
+        for event, entries in HOOKS["hooks"].items():
+            cfg.setdefault("hooks", {}).setdefault(event, []).extend(entries)
+        open(hooks_file, "w").write(json.dumps(cfg, indent=2))
+        print(f"    Trae hooks written to {hooks_file}")
+PYEOF
+
+# 4. 注册开机自启
 echo "==> enabling launch at login..."
 mkdir -p "$HOME/Library/LaunchAgents"
 cat > "$HOME/Library/LaunchAgents/com.coincoding.app.plist" <<EOF
