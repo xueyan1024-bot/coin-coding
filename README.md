@@ -24,26 +24,13 @@ Supports **Claude Code** and **Trae**.
 
 ---
 
-## How it works
-
-Coin Coding hooks into your AI agent's activity. When your agent starts working, coins fall. When it goes idle, they stop.
-
-**Claude Code** — uses Claude Code Hooks, configured automatically by the install script.
-
-> **Note:** Coin Coding cannot detect when Claude Code is waiting for a **permission prompt**. The game keeps running in those moments.
-
-**Trae** — uses Trae's built-in Hooks system. See the Trae section under Install below.
-
----
-
 ## Features
 
-- Real-time sync with Claude Code and Trae working state
+- Real-time sync with your agent's working state
 - Minimal coin-catching game
 - Transparent floating window — drag anywhere, resize freely
 - Custom coin art (Coinface) and click sound presets
 - Global leaderboard — coming soon
-- Zero configuration after install, launches at login
 
 ---
 
@@ -59,18 +46,22 @@ curl -fsSL https://raw.githubusercontent.com/xueyan1024-bot/coin-coding/main/ins
 
 This will:
 - Download and install the app to `/Applications`
-- Wire up Claude Code hooks so the app knows when your agent is active
+- Wire up hooks so the app knows when your agent is active
 - Set the app to launch at login
 
-After install, look for the `$` icon in your menu bar.
+After install, look for the `$` icon in your menu bar. No further configuration needed.
+
+> **Note:** Coin Coding cannot detect when Claude Code is waiting for a permission prompt. The game keeps running in those moments.
 
 ### Trae
 
-**Step 1** — Run the same install script:
+**Step 1** — Install the app:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/xueyan1024-bot/coin-coding/main/install.sh | bash
 ```
+
+This will download and install the app to `/Applications` and set it to launch at login.
 
 **Step 2** — Enable in Trae settings:
 
@@ -78,17 +69,27 @@ curl -fsSL https://raw.githubusercontent.com/xueyan1024-bot/coin-coding/main/ins
 2. Turn on **导入 CLAUDE 中的 Hooks 配置** (Import Claude hooks config)
 3. Make sure the run mode is set to **本地自动运行 (Run locally)**
 
-Done. Send a message to your agent and watch coins fall.
+After that, look for the `$` icon in your menu bar. Send a message to your agent and watch coins fall.
 
 ---
 
 ## Uninstall
+
+### Claude Code
 
 ```bash
 rm -rf '/Applications/Coin Coding.app' ~/.coincoding ~/Library/LaunchAgents/com.coincoding.app.plist
 ```
 
 Then remove the hooks block from `~/.claude/settings.json`.
+
+### Trae
+
+```bash
+rm -rf '/Applications/Coin Coding.app' ~/.coincoding ~/Library/LaunchAgents/com.coincoding.app.plist
+```
+
+Then go to Trae **Settings → Hooks** and turn off **导入 CLAUDE 中的 Hooks 配置**.
 
 ---
 ---
@@ -115,26 +116,13 @@ token 在跑，金币在爆，祝您发财！🪙
 
 ---
 
-## 工作原理
-
-Coin Coding 通过 hooks 感知 Agent 的工作状态。Agent 开始工作时金币下落，进入空闲时停止。
-
-**Claude Code** — 使用 Claude Code Hooks，安装脚本自动配置。
-
-> **注意：** Coin Coding 暂时无法检测 Claude Code 等待 **Permission prompt** 的状态，出现确认弹窗时游戏会继续运行。
-
-**Trae** — 使用 Trae 内置的 Hooks 系统。详见下方 Trae 安装步骤。
-
----
-
 ## 功能特性
 
-- 实时感知 Claude Code / Trae 工作状态
+- 实时感知 Agent 工作状态
 - 极简集金币小游戏
 - 透明背景，随意拖动，随意更改窗口大小
 - 自定义金币图案（Coinface）和点击音效
 - 全球排行榜 — 即将上线
-- 安装后几乎无需配置，开机自动启动
 
 ---
 
@@ -150,18 +138,22 @@ curl -fsSL https://raw.githubusercontent.com/xueyan1024-bot/coin-coding/main/ins
 
 安装脚本会自动完成：
 - 下载并安装 app 到 `/Applications`
-- 配置 Claude Code hooks，让 app 感知 Agent 状态
+- 配置 hooks，让 app 感知 Agent 状态
 - 设置开机自启
 
-安装完成后，菜单栏会出现 `$` 图标。
+安装完成后，菜单栏会出现 `$` 图标，无需任何额外配置。
+
+> **注意：** Coin Coding 暂时无法检测 Claude Code 等待 Permission prompt 的状态，出现确认弹窗时游戏会继续运行。
 
 ### Trae
 
-**第一步** — 运行同一个安装脚本：
+**第一步** — 安装 app：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/xueyan1024-bot/coin-coding/main/install.sh | bash
 ```
+
+脚本会下载并安装 app 到 `/Applications`，并设置开机自启。
 
 **第二步** — 在 Trae 里开启：
 
@@ -169,14 +161,24 @@ curl -fsSL https://raw.githubusercontent.com/xueyan1024-bot/coin-coding/main/ins
 2. 打开 **导入 CLAUDE 中的 Hooks 配置**
 3. 确认运行方式为 **本地自动运行**
 
-完成。向 Agent 发一条消息，金币就会开始掉落。
+完成后菜单栏会出现 `$` 图标。向 Agent 发一条消息，金币就会开始掉落。
 
 ---
 
 ## 卸载
+
+### Claude Code
 
 ```bash
 rm -rf '/Applications/Coin Coding.app' ~/.coincoding ~/Library/LaunchAgents/com.coincoding.app.plist
 ```
 
 然后手动从 `~/.claude/settings.json` 里删掉 hooks 相关配置。
+
+### Trae
+
+```bash
+rm -rf '/Applications/Coin Coding.app' ~/.coincoding ~/Library/LaunchAgents/com.coincoding.app.plist
+```
+
+然后在 Trae **设置 → Hooks** 里关闭 **导入 CLAUDE 中的 Hooks 配置**。
