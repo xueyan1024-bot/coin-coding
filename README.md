@@ -66,23 +66,17 @@ After install, look for the `$` icon in your menu bar.
 
 ### Trae
 
-**Step 1** — Install the app (same as above, skip if already installed):
+**Step 1** — Run the same install script:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/xueyan1024-bot/coin-coding/main/install.sh | bash
 ```
 
-**Step 2** — Copy the hook config to your project:
-
-Copy the `.trae/` folder from this repo into the root of your project.
-
-**Step 3** — Enable hooks in Trae:
+**Step 2** — Enable in Trae settings:
 
 1. Open Trae **Settings → Hooks**
-2. Under configuration, select **项目 (Project)**
-3. Click **创建 (Create)**
-4. When the security prompt appears, click **启用 (Enable)**
-5. Set the run mode to **本地自动运行 (Run locally)** — sandbox mode may not be able to write to `~/.coincoding/state.txt`
+2. Turn on **导入 CLAUDE 中的 Hooks 配置** (Import Claude hooks config)
+3. Make sure the run mode is set to **本地自动运行 (Run locally)**
 
 Done. Send a message to your agent and watch coins fall.
 
@@ -163,25 +157,19 @@ curl -fsSL https://raw.githubusercontent.com/xueyan1024-bot/coin-coding/main/ins
 
 ### Trae
 
-**第一步** — 安装 app（已安装可跳过）：
+**第一步** — 运行同一个安装脚本：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/xueyan1024-bot/coin-coding/main/install.sh | bash
 ```
 
-**第二步** — 把 hook 配置复制到你的项目：
-
-将本仓库的 `.trae/` 文件夹复制到你项目的根目录下。
-
-**第三步** — 在 Trae 里启用 hooks：
+**第二步** — 在 Trae 里开启：
 
 1. 打开 Trae **设置 → Hooks**
-2. 在配置部分选择 **项目**
-3. 点击 **创建**
-4. 弹出安全提示后点击 **启用**
-5. 运行方式选择 **本地自动运行**（沙箱模式可能无法写入 `~/.coincoding/state.txt`）
+2. 打开 **导入 CLAUDE 中的 Hooks 配置**
+3. 确认运行方式为 **本地自动运行**
 
-完成后，向 Agent 发一条消息，金币就会开始掉落。
+完成。向 Agent 发一条消息，金币就会开始掉落。
 
 ---
 
