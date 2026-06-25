@@ -36,7 +36,13 @@ Supports **Claude Code** and **Trae**.
 
 ## Usage
 
-After install, a `$` icon appears in your menu bar. Click it to open the menu.
+After install, Coin Coding appears in Launchpad and launches automatically at login.
+
+![launchpad](assets/screenshot-launchpad.png)
+
+A `$` icon appears in your menu bar. Click it to open the menu.
+
+![menu](assets/screenshot-menu.png)
 
 **Floating window** — click `window --show` in the menu to open the game window. Coins fall from the top while your agent is working. Click them to collect.
 
@@ -146,7 +152,13 @@ token 在跑，金币在爆，祝您发财！🪙
 
 ## 使用方式
 
-安装完成后，菜单栏出现 `$` 图标，点击打开菜单。
+安装完成后，Coin Coding 会出现在启动台，并在开机时自动启动。
+
+![launchpad](assets/screenshot-launchpad.png)
+
+菜单栏出现 `$` 图标，点击打开菜单。
+
+![menu](assets/screenshot-menu.png)
 
 **悬浮窗口** — 在菜单中点击 `window --show` 打开游戏窗口。Agent 工作时金币从顶部持续落下，点击收集。
 
